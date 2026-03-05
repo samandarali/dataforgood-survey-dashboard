@@ -8,7 +8,7 @@ import pandas as pd
 from pathlib import Path
 
 from data_utils import (
-    create_workshop_id,
+    create_survey_session_id,
     apply_filters,
     generate_summary,
     SUMMARY_GROUPBY_OPTIONS,
@@ -52,7 +52,7 @@ df = load_data()
 
 # Ensure workshop_id exists for plotting (needed in Visualization mode)
 if "workshop_id" not in df.columns:
-    df = create_workshop_id(df)
+    df = create_survey_session_id(df)
 
 # -----------------------------
 # 1️⃣ Sample selection (top-level filter)

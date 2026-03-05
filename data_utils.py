@@ -19,7 +19,7 @@ def filter_survey_df(df, filter_survey, filter_survey_version):
 
 
 
-def create_workshop_id(df):
+def create_survey_session_id(df):
     df = df.copy()
     df['timestamp'] = pd.to_datetime(df['timestamp'])
     df['date'] = df['timestamp'].dt.date
@@ -34,8 +34,9 @@ def create_workshop_id(df):
         df['timestamp'].dt.strftime('%y%m%d').astype(int)
     )
 
-    df['workshop_id'] = (
+    df['survey_session_id'] = (
         df['survey_type'].str.upper()
+        + df['survey_version'].str.lower()
         + "_"
         + df['survey_phase'].str.upper()
         + "_"
@@ -44,7 +45,7 @@ def create_workshop_id(df):
         + df['session'].str.upper()
     )
     print(
-        df[['school_id', 'date', 'hour', 'survey_phase', 'workshop_id']]
+        df[['school_id', 'date', 'hour', 'survey_phase', 'survey_session_id']]
         .drop_duplicates()
         .sort_values(by=['school_id', 'date', 'hour'])
     )
@@ -98,7 +99,7 @@ class QuestionTypeAccessor:
     Required columns (minimum):
       - scale_type
       - concept_key
-      - workshop_id
+      - survey_session_id
       - response_id (optional, not used in plotting below)
       - response (Likert text)
       - response_encoded (Likert numeric)
@@ -153,7 +154,7 @@ class QuestionTypeAccessor:
     ):
         # counts
         counts_ws = (
-            df_sub.groupby(["concept_key", "workshop_id", response_col])
+            df_sub.groupby(["concept_key", "survey_session_id", response_col])
                   .size()
                   .reset_index(name="count")
         )
@@ -212,7 +213,7 @@ class QuestionTypeAccessor:
             # ---- left: stacked bar ----
             sub_ws = counts_ws[counts_ws["concept_key"] == c_key]
             pivot_ws = (
-                sub_ws.pivot(index="workshop_id", columns=response_col, values="count")
+                sub_ws.pivot(index="survey_session_id", columns=response_col, values="count")
                       .fillna(0)
                       .reindex(columns=likert_order, fill_value=0)
                       .sort_index()
@@ -226,7 +227,7 @@ class QuestionTypeAccessor:
                 color=[likert_colors[c] for c in pivot_ws.columns],
             )
 
-            ax_ws.set_xlabel("workshop_id")
+            ax_ws.set_xlabel("survey_session_id")
             ax_ws.set_ylabel("count")
             ax_ws.tick_params(axis="x", labelrotation=90, labelsize=8)
 
@@ -294,7 +295,7 @@ class QuestionTypeAccessor:
 
         df_sub = df.loc[
             df["concept_key"].isin(concepts),
-            ["concept_key", "workshop_id", "response"] + ([question_text_col] if question_text_col in df.columns else [])
+            ["concept_key", "survey_session_id", "response"] + ([question_text_col] if question_text_col in df.columns else [])
         ].copy()
 
         if likert_order is None:
@@ -346,7 +347,7 @@ class QuestionTypeAccessor:
 
         df_sub = df.loc[
             df["concept_key"].isin(concepts),
-            ["concept_key", "workshop_id", "response_encoded"] + ([question_text_col] if question_text_col in df.columns else [])
+            ["concept_key", "survey_session_id", "response_encoded"] + ([question_text_col] if question_text_col in df.columns else [])
         ].copy()
 
         df_sub["response_encoded"] = pd.to_numeric(df_sub["response_encoded"], errors="coerce")
@@ -386,7 +387,7 @@ def apply_filters(
     df: pd.DataFrame,
     survey_type: str = "All",
     survey_phase: str = "All",
-    workshop_id: str = "All",
+    survey_session_id: str = "All",
     school_id: str = "All",
     scale_type: str = "All",
     date: str = "All",
@@ -394,10 +395,10 @@ def apply_filters(
 
 ) -> pd.DataFrame:
     """
-    Filter the dataframe by survey_type, survey_phase, and workshop_id.
+    Filter the dataframe by survey_type, survey_phase, and survey_session_id.
     Use "All" to leave a dimension unfiltered.
     """
-    required = {"survey_type", "survey_phase", "workshop_id"}
+    required = {"survey_type", "survey_phase", "survey_session_id"}
     missing = required - set(df.columns)
     if missing:
         raise KeyError(f"Missing required columns for filtering: {missing}")
@@ -410,8 +411,8 @@ def apply_filters(
     if survey_phase and survey_phase != "All":
         out = out[out["survey_phase"] == survey_phase]
         
-    if workshop_id and workshop_id != "All":
-        out = out[out["workshop_id"] == workshop_id]
+    if survey_session_id and survey_session_id != "All":
+        out = out[out["survey_session_id"] == survey_session_id]
 
     if school_id and school_id != "All":
         out = out[out["school_id"] == school_id]
@@ -431,7 +432,7 @@ def apply_filters(
 SUMMARY_GROUPBY_OPTIONS = [
     "survey_type",
     "survey_phase",
-    "workshop_id",
+    "survey_session_id",
     "school_id",
     "scale_type",
     "date",
@@ -522,9 +523,9 @@ def run_likert_plot(
     """
     Route to accessor plots: plot_LikText_q or plot_LikNum_q.
     Returns the matplotlib figure for display in Streamlit.
-    Requires workshop_id to exist on the dataframe.
+    Requires survey_session_id to exist on the dataframe.
     """
-    required_base = {"concept_key", "workshop_id", "scale_type"}
+    required_base = {"concept_key", "survey_session_id", "scale_type"}
     missing = required_base - set(df_filtered.columns)
     if missing:
         raise KeyError(f"Missing required columns for plotting: {missing}")

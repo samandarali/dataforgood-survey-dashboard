@@ -30,26 +30,26 @@ def create_workshop_id(df):
     df['session'] = np.where(df['timestamp'].dt.hour < 12,
                                 'AM',
                                 'PM')
-    df['base_id'] = (
-        df
-        .groupby(['school_id', 'date'])
-        .ngroup()
+    df['date_id'] = (
+        df['timestamp'].dt.strftime('%y%m%d').astype(int)
     )
 
     df['workshop_id'] = (
-        df['survey_phase'].str.upper()
+        df['survey_type'].str.upper()
         + "_"
-        + df['base_id'].astype(str)
+        + df['survey_phase'].str.upper()
+        + "_"
+        + df['date_id'].astype(str)
         + "_"
         + df['session'].str.upper()
     )
-    print(df[['school_id', 'date', 'hour', 'survey_phase','workshop_id' ]].drop_duplicates().sort_values(
+    print(
+        df[['school_id', 'date', 'hour', 'survey_phase', 'workshop_id']]
+        .drop_duplicates()
+        .sort_values(by=['school_id', 'date', 'hour'])
+    )
 
-  by=['school_id', 'date', 'hour'],
-  ascending=[True, True, True]
-    ))
     return df
-    
 
 def split_by_phase(df, phase_col="survey_phase"):
     """

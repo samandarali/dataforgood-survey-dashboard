@@ -1,0 +1,10 @@
+streamlit==1.32.2
+pandas==2.2.1
+numpy==1.26.4
+matplotlib==3.8.3
+seaborn==0.13.2
+anthropic==0.47.0
+google-api-python-client==2.265.0
+google-auth-oauthlib==1.2.0
+google-auth-httplib2==0.2.0
+google-auth-oauthlib==1.2.0

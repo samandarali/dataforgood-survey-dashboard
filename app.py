@@ -6,6 +6,7 @@ Uses data_utils for filtering, dynamic summary, and Likert plots.
 import streamlit as st
 import pandas as pd
 from pathlib import Path
+import plotly.io
 
 from data_utils import (
     create_survey_session_id,
@@ -160,12 +161,18 @@ else:
         st.subheader("Plots")
         try:
             likert_kind = "text" if likert_type == "Likert text" else "numeric"
-            fig = run_likert_plot(
+            figs = run_likert_plot(
                 df_filtered,
                 likert_kind=likert_kind,
                 title=plot_title,
             )
-            if fig is not None:
-                st.pyplot(fig)
+            if figs is not None:
+                for i, fig in enumerate(figs):
+                    st.plotly_chart(fig, use_container_width=True)
+                    # Add more spacing between plots (except after the last one)
+                    if i < len(figs) - 1:
+                        st.markdown("<br><br>", unsafe_allow_html=True)
+                        st.markdown("---")  # Add a horizontal divider
+                        st.markdown("<br>", unsafe_allow_html=True)
         except (KeyError, ValueError) as e:
             st.error(str(e))

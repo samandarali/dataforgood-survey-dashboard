@@ -131,6 +131,8 @@ class QuestionTypeAccessor:
 
     def categorical_questions(self):
         return self._obj.loc[self._obj["scale_type"] == "Categorical", "concept_key"].dropna().unique()
+    def open_ended_text_questions(self):
+        return self._obj.loc[self._obj["scale_type"] == "Open-Ended", "concept_key"].dropna().unique()
 
     # ---------- internal helpers ----------
     def _concept_labels(self, question_text_col="question_text"):
@@ -679,6 +681,32 @@ def get_categorical_color(response_text):
     return fallback_colors[hash_val % len(fallback_colors)]
 
 
+def explore_semantic_text(df: pd.DataFrame):
+    """
+    Return a subset of the dataframe for open‑ended text questions,
+    with the columns needed for semantic exploration.
+
+    If `survey_session_id` is missing (e.g. when `load_data` is used
+    outside the Streamlit app), this function will create it using
+    `create_survey_session_id`.
+    """
+
+    # Ensure survey_session_id exists when called outside app.py
+    if "survey_session_id" not in df.columns:
+        df = create_survey_session_id(df)
+
+    concepts = df.qtype.open_ended_text_questions()
+    cols = ["concept_key", "question_number", "question_text", "survey_session_id", "response"]
+
+    # Guard against missing columns to give a clearer error
+    missing = [c for c in cols if c not in df.columns]
+    if missing:
+        raise KeyError(f"Missing required columns for semantic exploration: {missing}")
+
+    df_sub = df.loc[df["concept_key"].isin(concepts), cols].copy()
+    return df_sub
+
+
 # --- added function for filtering data
 
 
@@ -867,6 +895,7 @@ def run_categorical_plot(
     return df_filtered.qtype.plot_Categorical_q(
         question_text_col=question_text_col, title=title
     )
+
 
 
 

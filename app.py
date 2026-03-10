@@ -5,8 +5,8 @@ Uses data_utils for filtering, dynamic summary, and Likert plots.
 
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 from pathlib import Path
-import plotly.io
 
 from data_utils import (
     create_survey_session_id,
@@ -17,6 +17,14 @@ from data_utils import (
     SUMMARY_METRIC_LABELS,
     run_likert_plot,
     run_categorical_plot,
+    explore_semantic_text,
+)
+from semantic_exploration import (
+    clean_responses,
+    compute_umap,
+    cluster_responses_bertopic,
+    extract_topics_bertopic,
+    summarize_clusters_bertopic,
 )
 
 
@@ -48,13 +56,252 @@ def load_data() -> pd.DataFrame:
 # App
 # -----------------------------
 st.set_page_config(page_title="Survey Dashboard", layout="wide")
-st.title("Survey Dashboard")
+
+# Initialize page in session state
+if "page" not in st.session_state:
+    st.session_state.page = "Main Dashboard"
+
+# Navigation
+st.sidebar.title("Navigation")
+page = st.sidebar.radio(
+    "Select Page",
+    options=["Main Dashboard", "Semantic Exploration"],
+    index=0 if st.session_state.page == "Main Dashboard" else 1,
+    key="page_selector"
+)
+st.session_state.page = page
 
 df = load_data()
 
 # Ensure workshop_id exists for plotting (needed in Visualization mode)
 if "workshop_id" not in df.columns:
     df = create_survey_session_id(df)
+
+# -----------------------------
+# Semantic Exploration Page
+# -----------------------------
+if page == "Semantic Exploration":
+    st.title("Semantic Exploration Dashboard")
+    
+    # Load semantic data
+    @st.cache_data
+    def load_semantic_data():
+        """Load data for semantic exploration."""
+        df_sub = explore_semantic_text(df)
+        return df_sub
+    
+    df_sub = load_semantic_data()
+    
+    # Missing responses analysis
+    st.header(" Missing Responses Analysis")
+    
+    def calc_missing_pct(x):
+        """Calculate percentage of missing responses."""
+        if len(x) == 0:
+            return 0
+        missing = x.isna().sum()
+        empty = (x.astype(str).str.strip() == "").sum()
+        return (missing + empty) / len(x) * 100
+    
+    missing_stats = (
+        df_sub.groupby("concept_key")["response"]
+        .apply(calc_missing_pct)
+        .reset_index(name="missing_pct")
+    )
+    
+    total_counts = (
+        df_sub.groupby("concept_key")["response"]
+        .count()
+        .reset_index(name="total_responses")
+    )
+    
+    missing_stats = missing_stats.merge(total_counts, on="concept_key")
+    missing_stats = missing_stats.sort_values("missing_pct", ascending=False)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("Missing Response Percentages")
+        st.dataframe(
+            missing_stats.style.format({"missing_pct": "{:.1f}%"}),
+            use_container_width=True,
+        )
+    
+    with col2:
+        st.subheader("Missing Responses Chart")
+        fig_missing = px.bar(
+            missing_stats,
+            x="concept_key",
+            y="missing_pct",
+            title="Percentage of Missing Responses by Concept",
+            labels={"missing_pct": "Missing %", "concept_key": "Concept Key"},
+        )
+        fig_missing.update_xaxes(tickangle=45)
+        st.plotly_chart(fig_missing, use_container_width=True)
+    
+    df_open = clean_responses(df_sub)
+    
+    # Semantic Analysis per Concept
+    st.header("Semantic Analysis by Concept")
+    st.caption("Using **BERTopic** for topic modeling (minimum topic size = 10 responses per topic).")
+    
+    concept_options = sorted(df_open["concept_key"].dropna().unique().tolist())
+    selected_concept_analysis = st.selectbox(
+        "Select Concept Key for Semantic Analysis",
+        options=concept_options,
+        index=0,
+    )
+    
+    if st.button("Run Semantic Analysis", type="primary"):
+        with st.spinner("Computing embeddings and clustering responses..."):
+            df_q = df_open[df_open["concept_key"] == selected_concept_analysis].copy()
+            
+            if len(df_q) < 3:
+                st.warning(
+                    f"Not enough responses for concept '{selected_concept_analysis}'. Need at least 3 responses."
+                )
+            else:
+                try:
+                    df_q, topic_model, topic_info, embeddings = cluster_responses_bertopic(df_q)
+                    topics_dict = extract_topics_bertopic(topic_model, df_q)
+                    summary = summarize_clusters_bertopic(
+                        df_q,
+                        topics_dict,
+                        topic_info,
+                        topic_model,
+                        total_responses=len(df_q),
+                    )
+                    
+                    umap_embeddings = None
+                    try:
+                        if hasattr(topic_model, "umap_model"):
+                            umap_embeddings = topic_model.umap_model.transform(embeddings)
+                        else:
+                            umap_embeddings = compute_umap(embeddings)
+                    except Exception:
+                        umap_embeddings = compute_umap(embeddings)
+                    
+                    st.session_state[f"df_q_{selected_concept_analysis}"] = df_q
+                    st.session_state[f"summary_{selected_concept_analysis}"] = summary
+                    st.session_state[f"topics_dict_{selected_concept_analysis}"] = topics_dict
+                    st.session_state[f"topic_model_{selected_concept_analysis}"] = topic_model
+                    st.session_state[f"topic_info_{selected_concept_analysis}"] = topic_info
+                    st.session_state[f"umap_{selected_concept_analysis}"] = umap_embeddings
+                except Exception as e:
+                    st.error(f"Error with BERTopic: {str(e)}")
+    
+    # Display results if available
+    if f"df_q_{selected_concept_analysis}" in st.session_state:
+        df_q = st.session_state[f"df_q_{selected_concept_analysis}"]
+        summary = st.session_state[f"summary_{selected_concept_analysis}"]
+        topics_dict = st.session_state.get(f"topics_dict_{selected_concept_analysis}", {})
+        topic_model = st.session_state.get(f"topic_model_{selected_concept_analysis}", None)
+        umap_embeddings = st.session_state.get(f"umap_{selected_concept_analysis}", None)
+        
+        # Show question text
+        question_text_example = None
+        try:
+            question_text_example = (
+                df_sub.loc[df_sub["concept_key"] == selected_concept_analysis, "question_text"]
+                .dropna()
+                .iloc[0]
+            )
+        except Exception:
+            question_text_example = None
+        
+        if question_text_example:
+            st.markdown(f"**Question text:** {question_text_example}")
+        
+        # Summary table
+        st.subheader("Topic Summary")
+        if len(summary) > 0:
+            summary_display = summary.copy()
+            if "percentage" in summary_display.columns:
+                summary_display["percentage"] = summary_display["percentage"].apply(
+                    lambda x: f"{x:.1f}%"
+                )
+            st.dataframe(
+                summary_display[
+                    ["cluster", "size", "percentage", "keywords", "example_responses"]
+                ],
+                use_container_width=True,
+                height=320,
+            )
+        else:
+            st.info("No topics found for this concept.")
+        
+        # Visualizations
+        if len(summary) > 0:
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.subheader("Topic Distribution (Pie Chart)")
+                fig_pie = px.pie(
+                    summary,
+                    values="percentage",
+                    names="topic_name",
+                    title=f"Topic distribution for {selected_concept_analysis}",
+                    hover_data=["size"],
+                )
+                fig_pie.update_traces(textposition="inside", textinfo="percent+label")
+                st.plotly_chart(fig_pie, use_container_width=True)
+            
+            with col2:
+                st.subheader("Topic Percentages (Bar Chart)")
+                fig_bar = px.bar(
+                    summary.sort_values("percentage", ascending=False),
+                    x="topic_name",
+                    y="percentage",
+                    title="Percentage distribution by topic",
+                    labels={"percentage": "Percentage (%)", "topic_name": "Topic"},
+                    text="percentage",
+                )
+                fig_bar.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
+                fig_bar.update_xaxes(tickangle=45)
+                st.plotly_chart(fig_bar, use_container_width=True)
+            
+            # UMAP visualization
+            if umap_embeddings is not None:
+                st.subheader("UMAP Visualization")
+                
+                min_len = min(len(umap_embeddings), len(df_q))
+                umap_df = pd.DataFrame({
+                    "x": umap_embeddings[:min_len, 0],
+                    "y": umap_embeddings[:min_len, 1],
+                    "cluster": df_q["cluster"].values[:min_len],
+                    "response": df_q["response"].values[:min_len],
+                })
+                
+                topic_name_map = dict(zip(summary["cluster"], summary["topic_name"]))
+                topic_name_map[-1] = "Noise"
+                umap_df["topic_name"] = umap_df["cluster"].map(topic_name_map).fillna("Unknown")
+                
+                fig_umap = px.scatter(
+                    umap_df,
+                    x="x",
+                    y="y",
+                    color="topic_name",
+                    hover_data=["response"],
+                    title=f"UMAP visualization of responses for {selected_concept_analysis}",
+                    labels={"x": "UMAP 1", "y": "UMAP 2"},
+                )
+                st.plotly_chart(fig_umap, use_container_width=True)
+                
+                # Topic similarity matrix
+                if topic_model is not None:
+                    st.subheader("Topic Similarity Matrix")
+                    try:
+                        fig_similarity = topic_model.visualize_heatmap()
+                        st.plotly_chart(fig_similarity, use_container_width=True)
+                    except Exception:
+                        st.info("Topic similarity matrix not available for this concept.")
+    
+    st.stop()
+
+# -----------------------------
+# Main Dashboard Page
+# -----------------------------
+st.title("Survey Dashboard")
 
 # -----------------------------
 # 1️⃣ Sample selection (top-level filter)

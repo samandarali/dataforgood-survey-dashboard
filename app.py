@@ -6,6 +6,7 @@ Uses data_utils for filtering, dynamic summary, and Likert plots.
 import streamlit as st
 import pandas as pd
 from pathlib import Path
+import plotly.io
 
 from data_utils import (
     create_survey_session_id,
@@ -15,6 +16,7 @@ from data_utils import (
     SUMMARY_METRIC_OPTIONS,
     SUMMARY_METRIC_LABELS,
     run_likert_plot,
+    run_categorical_plot,
 )
 
 
@@ -149,23 +151,36 @@ else:
             "Phase is required for plots."
         )
     else:
-        likert_type = st.sidebar.selectbox(
+        question_type = st.sidebar.selectbox(
             "Question type",
-            options=["Likert text", "Likert numeric"],
+            options=["Likert text", "Likert numeric", "Categorical"],
             index=0,
         )
 
-        plot_title = f"{selected_survey_type} | {selected_survey_phase} | {likert_type}"
+        plot_title = f"{selected_survey_type} | {selected_survey_phase} | {question_type}"
 
         st.subheader("Plots")
         try:
-            likert_kind = "text" if likert_type == "Likert text" else "numeric"
-            fig = run_likert_plot(
-                df_filtered,
-                likert_kind=likert_kind,
-                title=plot_title,
-            )
-            if fig is not None:
-                st.pyplot(fig)
+            if question_type == "Categorical":
+                figs = run_categorical_plot(
+                    df_filtered,
+                    title=plot_title,
+                )
+            else:
+                likert_kind = "text" if question_type == "Likert text" else "numeric"
+                figs = run_likert_plot(
+                    df_filtered,
+                    likert_kind=likert_kind,
+                    title=plot_title,
+                )
+            
+            if figs is not None:
+                for i, fig in enumerate(figs):
+                    st.plotly_chart(fig, use_container_width=True)
+                    # Add more spacing between plots (except after the last one)
+                    if i < len(figs) - 1:
+                        st.markdown("<br><br>", unsafe_allow_html=True)
+                        st.markdown("---")  # Add a horizontal divider
+                        st.markdown("<br>", unsafe_allow_html=True)
         except (KeyError, ValueError) as e:
             st.error(str(e))

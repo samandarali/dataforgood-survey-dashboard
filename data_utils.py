@@ -2,9 +2,12 @@ import pandas as pd
 import numpy as np
 import math
 import textwrap
-import matplotlib.pyplot as plt
 
-
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import textwrap
+import ast
+import hashlib
 # function to filter by  survay type and version
 
 def filter_survey_df(df, filter_survey, filter_survey_version):
@@ -126,6 +129,9 @@ class QuestionTypeAccessor:
     def open_ended_questions(self):
         return self._obj.loc[self._obj["scale_type"] == "Open-Ended", "concept_key"].dropna().unique()
 
+    def categorical_questions(self):
+        return self._obj.loc[self._obj["scale_type"] == "Categorical", "concept_key"].dropna().unique()
+
     # ---------- internal helpers ----------
     def _concept_labels(self, question_text_col="question_text"):
         cols = ["concept_key", question_text_col]
@@ -149,133 +155,157 @@ class QuestionTypeAccessor:
         title,
         question_text_col="question_text",
         wrap_width=160,
-        figsize_width=18,
-        row_height=4.2,
+        max_side_bars=10
     ):
-        # counts
+
+
         counts_ws = (
             df_sub.groupby(["concept_key", "survey_session_id", response_col])
-                  .size()
-                  .reset_index(name="count")
+            .size()
+            .reset_index(name="count")
         )
+
         counts_total = (
             df_sub.groupby(["concept_key", response_col])
-                  .size()
-                  .reset_index(name="count")
+            .size()
+            .reset_index(name="count")
         )
 
-        concepts = df_sub["concept_key"].dropna().unique()
-        n = len(concepts)
-        if n == 0:
-            raise ValueError("No concepts to plot (empty after filtering).")
+        concept_labels = self._concept_labels(question_text_col)
 
-        concept_labels = self._concept_labels(question_text_col=question_text_col)
+        figs = []
 
-        fig_height = row_height * n
-        fig, axes = plt.subplots(
-            nrows=n, ncols=2,
-            figsize=(figsize_width, row_height * n),
-            gridspec_kw={"width_ratios": [1.6, 1.0]}
-        )
+        for concept in df_sub["concept_key"].dropna().unique():
 
+            sub_ws = counts_ws[counts_ws["concept_key"] == concept]
 
-
-        # --- header band: adjust for small n ---
-        if n == 1:
-            axes = np.array([axes])
-
-        # --- Dynamic header positioning ---
-        # Header band shrinks as n grows because each row takes a smaller fraction of fig height
-        # Reserve a fixed pixel amount (~1.2 inches) for the header band regardless of n
-        header_inches = 1.2
-        header_fraction = header_inches / fig_height
-
-        AX_TOP = 1.0 - header_fraction          # plots start here (in figure fraction)
-        SUPTITLE_Y = 1.0 - (header_inches * 0.10) / fig_height   # very close to top
-        COLHDR_Y   = 1.0 - (header_inches * 0.55) / fig_height   # midway in header band
-
-        # Clamp to sane values
-        AX_TOP     = max(0.60, min(0.95, AX_TOP))
-        SUPTITLE_Y = max(AX_TOP + 0.02, min(0.99, SUPTITLE_Y))
-        COLHDR_Y   = max(AX_TOP + 0.005, min(SUPTITLE_Y - 0.01, COLHDR_Y))
-
-        fig.subplots_adjust(top=AX_TOP, wspace=0.06, hspace=0.75)
-
-        fig.suptitle(title, y=SUPTITLE_Y, fontsize=14, fontweight="bold")
-        fig.text(0.30, COLHDR_Y, "By workshop", ha="center", fontsize=12, fontweight="bold")
-        fig.text(0.77, COLHDR_Y, "Total (all workshops)", ha="center", fontsize=12, fontweight="bold")
-
-
-        for i, c_key in enumerate(concepts):
-            ax_ws = axes[i, 0]
-            ax_tot = axes[i, 1]
-
-            # ---- left: stacked bar ----
-            sub_ws = counts_ws[counts_ws["concept_key"] == c_key]
             pivot_ws = (
                 sub_ws.pivot(index="survey_session_id", columns=response_col, values="count")
-                      .fillna(0)
-                      .reindex(columns=likert_order, fill_value=0)
-                      .sort_index()
+                .fillna(0)
+                .reindex(columns=likert_order, fill_value=0)
+                .sort_index()
             )
 
-            pivot_ws.plot(
-                kind="bar",
-                stacked=True,
-                ax=ax_ws,
-                legend=False,
-                color=[likert_colors[c] for c in pivot_ws.columns],
-            )
+            workshops = pivot_ws.index.tolist()
+            num_ws = len(workshops)
 
-            ax_ws.set_xlabel("survey_session_id")
-            ax_ws.set_ylabel("count")
-            ax_ws.tick_params(axis="x", labelrotation=90, labelsize=8)
+            sub_tot = counts_total[counts_total["concept_key"] == concept]
 
-            # ---- right: pie (total) ----
-            sub_tot = counts_total[counts_total["concept_key"] == c_key]
             total_series = (
                 sub_tot.set_index(response_col)["count"]
-                      .reindex(likert_order, fill_value=0)
+                .reindex(likert_order, fill_value=0)
             )
 
-            pie_colors = [likert_colors[c] for c in likert_order]
-            wedges, texts, autotexts = ax_tot.pie(
-                total_series,
-                labels=likert_order,
-                colors=pie_colors,
-                autopct="%1.1f%%",
-                startangle=90,
-                labeldistance=1.12,
-                pctdistance=0.70,
-                textprops={"fontsize": 8},
-                radius=1.15,
+            label = concept_labels.get(concept, str(concept))
+            wrapped = "<br>".join(textwrap.wrap(f"{concept}: {label}", wrap_width))
+
+            # ---------- Layout decision ----------
+
+            if num_ws <= max_side_bars:
+
+                fig = make_subplots(
+                    rows=1,
+                    cols=2,
+                    specs=[[{"type": "bar"}, {"type": "domain"}]],
+                    column_widths=[0.55, 0.45],
+                    subplot_titles=[wrapped, ""],
+                    horizontal_spacing=0.05,
+                )
+
+                bar_row, pie_row = 1, 1
+                pie_col = 2
+
+            else:
+
+                fig = make_subplots(
+                    rows=2,
+                    cols=1,
+                    specs=[[{"type": "bar"}], [{"type": "domain"}]],
+                    subplot_titles=[wrapped, ""],
+                    vertical_spacing=0.20,
+                )
+
+                bar_row, pie_row = 1, 2
+                pie_col = 1
+
+            # ---------- Bars ----------
+
+            for resp in likert_order:
+
+                vals = pivot_ws[resp]
+
+                fig.add_trace(
+                    go.Bar(
+                        x=workshops,
+                        y=vals,
+                        marker_color=likert_colors[resp],
+                        name=str(resp),
+                        text=vals,
+                        textposition="inside",
+                    ),
+                    row=bar_row,
+                    col=1,
+                )
+
+            totals = pivot_ws.sum(axis=1)
+
+            fig.add_trace(
+                go.Scatter(
+                    x=workshops,
+                    y=totals,
+                    mode="text",
+                    text=totals,
+                    textposition="top center",
+                    showlegend=False,
+                ),
+                row=bar_row,
+                col=1,
             )
-            for t in autotexts:
-                t.set_fontsize(7)
 
-            ax_tot.axis("equal")
-            ax_tot.set_anchor("W")
+            # ---------- Pie ----------
 
-            # ---- row title centered above both ----
-            question_text = concept_labels.get(c_key, str(c_key))
-            row_title = "\n".join(textwrap.wrap(f"{c_key}: {question_text}", wrap_width))
-
-            pos_left = ax_ws.get_position()
-            pos_right = ax_tot.get_position()
-            x_center = (pos_left.x0 + pos_right.x1) / 2
-            y_top = max(pos_left.y1, pos_right.y1)
-
-            fig.text(
-                x_center, y_top + 0.009,
-                row_title,
-                ha="center", va="bottom",
-                fontsize=10, fontweight="bold"
+            # Pie (hidden from legend to avoid duplicating bar entries)
+            fig.add_trace(
+                go.Pie(
+                    labels=[str(x) for x in likert_order],
+                    values=total_series.values,
+                    marker=dict(colors=[likert_colors[x] for x in likert_order]),
+                    textinfo="percent",
+                    hole=0.45,
+                    sort=False,
+                    showlegend=False,
+                ),
+                row=pie_row,
+                col=pie_col,
             )
 
-        handles, labels = axes[0, 0].get_legend_handles_labels()
-        fig.legend(handles, labels, title="Response", loc="upper right")
-        return fig
+            fig.update_layout(
+                title=dict(text=title, x=0.5, font=dict(size=16), pad=dict(t=100, b=10)),
+                barmode="stack",
+                height=600 if num_ws <= max_side_bars else 800,
+                margin=dict(l=40, r=40, t=180, b=40),
+                
+            )
 
+            fig.update_xaxes(
+                tickangle=45,
+                automargin=True,
+                row=bar_row,
+                col=1,
+            )
+
+            fig.update_yaxes(
+                title="Responses",
+                showgrid=True,
+                gridcolor="rgba(200,200,200,0.3)",
+                row=bar_row,
+                col=1,
+            )
+
+            figs.append(fig)
+
+        return figs
+    
     # ---------- public plotting methods ----------
     def plot_LikText_q(
         self,
@@ -286,17 +316,25 @@ class QuestionTypeAccessor:
         wrap_width=160,
     ):
         """
-        Plot Likert Scale Text questions:
-          - stacked bars by workshop
-          - pie chart total across workshops
+        Plot Likert Text questions using Plotly.
+
+        Produces:
+        - stacked bars by workshop
+        - pie distribution of responses
         """
-        df = self._obj.copy()
+
+        df = self._obj
+
         concepts = self.likert_text_questions()
 
-        df_sub = df.loc[
-            df["concept_key"].isin(concepts),
-            ["concept_key", "survey_session_id", "response"] + ([question_text_col] if question_text_col in df.columns else [])
-        ].copy()
+        cols = ["concept_key", "survey_session_id", "response"]
+        if question_text_col in df.columns:
+            cols.append(question_text_col)
+
+        df_sub = df.loc[df["concept_key"].isin(concepts), cols].copy()
+
+        if df_sub.empty:
+            raise ValueError("No Likert text data available for plotting.")
 
         if likert_order is None:
             likert_order = [
@@ -306,6 +344,7 @@ class QuestionTypeAccessor:
                 "Agree",
                 "Strongly Agree",
             ]
+
         if likert_colors is None:
             likert_colors = {
                 "Strongly Disagree": "#b2182b",
@@ -314,10 +353,11 @@ class QuestionTypeAccessor:
                 "Agree": "#a6dba0",
                 "Strongly Agree": "#1b7837",
             }
+
         if title is None:
             title = "Likert Scale Text — by Workshop and Total"
 
-        return self._plot_by_workshop_and_total(
+        fig = self._plot_by_workshop_and_total(
             df_sub=df_sub,
             response_col="response",
             likert_order=likert_order,
@@ -326,6 +366,8 @@ class QuestionTypeAccessor:
             question_text_col=question_text_col,
             wrap_width=wrap_width,
         )
+
+        return fig
 
     def plot_LikNum_q(
         self,
@@ -336,26 +378,38 @@ class QuestionTypeAccessor:
         wrap_width=160,
     ):
         """
-        Plot Likert Scale Numeric questions:
-          - stacked bars by workshop
-          - pie chart total across workshops
+        Plot Likert Numeric questions using Plotly.
 
-        Expects response_encoded to be convertible to int 1..5 (or your scale).
+        Produces:
+        - stacked bars by workshop
+        - pie distribution of responses
         """
-        df = self._obj.copy()
+
+        df = self._obj
+
         concepts = self.likert_numeric_questions()
 
-        df_sub = df.loc[
-            df["concept_key"].isin(concepts),
-            ["concept_key", "survey_session_id", "response_encoded"] + ([question_text_col] if question_text_col in df.columns else [])
-        ].copy()
+        cols = ["concept_key", "survey_session_id", "response_encoded"]
+        if question_text_col in df.columns:
+            cols.append(question_text_col)
 
-        df_sub["response_encoded"] = pd.to_numeric(df_sub["response_encoded"], errors="coerce")
+        df_sub = df.loc[df["concept_key"].isin(concepts), cols].copy()
+
+        if df_sub.empty:
+            raise ValueError("No Likert numeric data available for plotting.")
+
+        # clean numeric responses
+        df_sub["response_encoded"] = pd.to_numeric(
+            df_sub["response_encoded"],
+            errors="coerce"
+        )
+
         df_sub = df_sub.dropna(subset=["response_encoded"])
         df_sub["response_encoded"] = df_sub["response_encoded"].astype(int)
 
         if likert_order is None:
             likert_order = [1, 2, 3, 4, 5]
+
         if likert_colors is None:
             likert_colors = {
                 1: "#b2182b",
@@ -364,10 +418,11 @@ class QuestionTypeAccessor:
                 4: "#a6dba0",
                 5: "#1b7837",
             }
+
         if title is None:
             title = "Likert Scale Numeric — by Workshop and Total"
 
-        return self._plot_by_workshop_and_total(
+        fig = self._plot_by_workshop_and_total(
             df_sub=df_sub,
             response_col="response_encoded",
             likert_order=likert_order,
@@ -377,8 +432,252 @@ class QuestionTypeAccessor:
             wrap_width=wrap_width,
         )
 
+        return fig
 
+    def plot_Categorical_q(
+        self,
+        question_text_col: str = "question_text",
+        title: str | None = None,
+        wrap_width: int = 160,
+    ):
+        """
+        Plot Categorical questions using Plotly.
+
+        - Uses `possible_responses` (when available) to determine the set
+          and order of response options.
+        - Handles multiple‐response selections like "Yes, Not sure" by
+          splitting into individual options and counting each separately.
+        """
+
+        df = self._obj
+
+        concepts = self.categorical_questions()
+
+        cols = ["concept_key", "survey_session_id", "response"]
+        if "possible_responses" in df.columns:
+            cols.append("possible_responses")
+        if question_text_col in df.columns:
+            cols.append(question_text_col)
+
+        df_sub = df.loc[df["concept_key"].isin(concepts), cols].copy()
+
+        if df_sub.empty:
+            raise ValueError("No Categorical data available for plotting.")
+
+        concept_labels = self._concept_labels(question_text_col)
+
+        figs: list[go.Figure] = []
+
+        for concept in df_sub["concept_key"].dropna().unique():
+            tmp = df_sub[df_sub["concept_key"] == concept].copy()
+
+            # -------------------------------------------------
+            # 1) Determine response options and their order
+            # -------------------------------------------------
+            response_order: list[str] | None = None
+
+            if "possible_responses" in tmp.columns and tmp["possible_responses"].notna().any():
+                pr_str = str(tmp["possible_responses"].dropna().iloc[0])
+                try:
+                    pr = ast.literal_eval(pr_str)
+                    if isinstance(pr, (list, tuple)):
+                        response_order = [str(x) for x in pr]
+                except Exception:
+                    response_order = None
+
+            # If no explicit ordering from possible_responses, infer from data
+            if response_order is None:
+                response_order = sorted(tmp["response"].dropna().astype(str).unique())
+
+            # -------------------------------------------------
+            # 2) Aggregate counts by workshop and overall
+            # -------------------------------------------------
+            counts_ws = (
+                tmp.groupby(["concept_key", "survey_session_id", "response"])
+                .size()
+                .reset_index(name="count")
+            )
+
+            counts_total = (
+                tmp.groupby(["concept_key", "response"])
+                .size()
+                .reset_index(name="count")
+            )
+
+            sub_ws = counts_ws[counts_ws["concept_key"] == concept]
+
+            pivot_ws = (
+                sub_ws.pivot(index="survey_session_id", columns="response", values="count")
+                .fillna(0)
+                .reindex(columns=response_order, fill_value=0)
+                .sort_index()
+            )
+
+            workshops = pivot_ws.index.tolist()
+            num_ws = len(workshops)
+
+            sub_tot = counts_total[counts_total["concept_key"] == concept]
+
+            total_series = (
+                sub_tot.set_index("response")["count"]
+                .reindex(response_order, fill_value=0)
+            )
+
+            label = concept_labels.get(concept, str(concept))
+            wrapped = "<br>".join(textwrap.wrap(f"{concept}: {label}", wrap_width))
+
+            # Color mapping per response option, using Likert-style helper
+            response_colors = {resp: get_categorical_color(resp) for resp in response_order}
+
+            # -------------------------------------------------
+            # 3) Build figure: bars + pie
+            # -------------------------------------------------
+            max_side_bars = 10
+            if num_ws <= max_side_bars:
+                fig = make_subplots(
+                    rows=1,
+                    cols=2,
+                    specs=[[{"type": "bar"}, {"type": "domain"}]],
+                    column_widths=[0.55, 0.45],
+                    subplot_titles=[wrapped, ""],
+                    horizontal_spacing=0.05,
+                )
+                bar_row, pie_row = 1, 1
+                pie_col = 2
+            else:
+                fig = make_subplots(
+                    rows=2,
+                    cols=1,
+                    specs=[[{"type": "bar"}], [{"type": "domain"}]],
+                    subplot_titles=[wrapped, ""],
+                    vertical_spacing=0.20,
+                )
+                bar_row, pie_row = 1, 2
+                pie_col = 1
+
+            # Bars
+            for resp in response_order:
+                vals = pivot_ws[resp]
+                fig.add_trace(
+                    go.Bar(
+                        x=workshops,
+                        y=vals,
+                        marker_color=response_colors[resp],
+                        name=str(resp),
+                        text=vals,
+                        textposition="inside",
+                    ),
+                    row=bar_row,
+                    col=1,
+                )
+
+            totals = pivot_ws.sum(axis=1)
+            fig.add_trace(
+                go.Scatter(
+                    x=workshops,
+                    y=totals,
+                    mode="text",
+                    text=totals,
+                    textposition="top center",
+                    showlegend=False,
+                ),
+                row=bar_row,
+                col=1,
+            )
+
+            # Pie (hidden from legend to avoid duplication)
+            fig.add_trace(
+                go.Pie(
+                    labels=[str(x) for x in response_order],
+                    values=total_series.values,
+                    marker=dict(colors=[response_colors[x] for x in response_order]),
+                    textinfo="percent",
+                    hole=0.45,
+                    sort=False,
+                    showlegend=False,
+                ),
+                row=pie_row,
+                col=pie_col,
+            )
+
+            plot_title = title if title else "Categorical Questions — by Workshop and Total"
+            fig.update_layout(
+                title=dict(text=plot_title, x=0.5, font=dict(size=16), pad=dict(t=100, b=10)),
+                barmode="stack",
+                height=600 if num_ws <= max_side_bars else 800,
+                margin=dict(l=40, r=40, t=180, b=40),
+                legend=dict(
+                    orientation="h",
+                    y=1.31,
+                    x=0.5,
+                    xanchor="center",
+                    yanchor="bottom",
+                ),
+            )
+
+            fig.update_xaxes(
+                tickangle=45,
+                automargin=True,
+                row=bar_row,
+                col=1,
+            )
+
+            fig.update_yaxes(
+                title="Responses",
+                showgrid=True,
+                gridcolor="rgba(200,200,200,0.3)",
+                row=bar_row,
+                col=1,
+            )
+
+            figs.append(fig)
+
+        return figs
+
+
+# Helper function to map categorical responses to Likert-style colors
+def get_categorical_color(response_text):
+    """Map categorical responses to Likert-style colors."""
+    response_lower = str(response_text).lower().strip()
     
+    # Helper for whole-word matching (so "no" doesn't match "not")
+    import re
+    def has_word(word: str) -> bool:
+        return re.search(r"\b" + re.escape(word) + r"\b", response_lower) is not None
+
+    # 1) Explicit "still unsure" (separate from plain "not sure" and "no")
+    if "still unsure" in response_lower:
+        # Amber-ish color distinct from both red "No" and grey "Not sure"
+        return "#fdb863"
+
+    # 2) Strong positive / positive -> Green shades (like Agree / Strongly Agree)
+    if any(word in response_lower for word in ["always", "often", "very familiar", "advanced", "yes"]):
+        if "strongly" in response_lower or "very" in response_lower or "advanced" in response_lower or "always" in response_lower:
+            return "#1b7837"  # Dark green (Strongly positive)
+        elif "can recognize racism but i'm not sure what to do" in response_lower:
+            return "#fdb863" 
+        else:
+            return "#a6dba0"  # Light green (Positive)
+
+    # 3) Pure negative -> Red shades (like Disagree)
+    if has_word("no") or has_word("never") or has_word("rarely") or "new to this topic" in response_lower:
+        if "strongly" in response_lower or "never" in response_lower:
+            return "#b2182b"  # Dark red (Strongly negative)
+        else:
+            return "#ef8a62"  # Light orange/red (Negative)
+
+    # 4) Neutral / uncertain -> Grey (like Neither / Not sure)
+    if "not sure" in response_lower or "unsure" in response_lower or "sometimes" in response_lower or "somewhat knowledgeable" in response_lower:
+        return "#bdbdbd"  # Grey
+    
+    # Default fallback colors for other responses
+    # Use a neutral palette for other responses
+    fallback_colors = ['#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
+    # Hash the response text to get a consistent color
+    
+    hash_val = int(hashlib.md5(str(response_text).encode()).hexdigest(), 16)
+    return fallback_colors[hash_val % len(fallback_colors)]
+
 
 # --- added function for filtering data
 
@@ -522,7 +821,7 @@ def run_likert_plot(
 ):
     """
     Route to accessor plots: plot_LikText_q or plot_LikNum_q.
-    Returns the matplotlib figure for display in Streamlit.
+    Returns the Plotly figure(s) for display in Streamlit.
     Requires survey_session_id to exist on the dataframe.
     """
     required_base = {"concept_key", "survey_session_id", "scale_type"}
@@ -545,6 +844,29 @@ def run_likert_plot(
         )
 
     raise ValueError("likert_kind must be 'text' or 'numeric'")
+
+
+def run_categorical_plot(
+    df_filtered: pd.DataFrame,
+    title: str | None = None,
+    question_text_col: str = "question_text",
+):
+    """
+    Route to accessor plots: plot_Categorical_q.
+    Returns the Plotly figure(s) for display in Streamlit.
+    Requires survey_session_id to exist on the dataframe.
+    """
+    required_base = {"concept_key", "survey_session_id", "scale_type"}
+    missing = required_base - set(df_filtered.columns)
+    if missing:
+        raise KeyError(f"Missing required columns for plotting: {missing}")
+
+    if "response" not in df_filtered.columns:
+        raise KeyError("Categorical plotting needs column: 'response'")
+    
+    return df_filtered.qtype.plot_Categorical_q(
+        question_text_col=question_text_col, title=title
+    )
 
 
 

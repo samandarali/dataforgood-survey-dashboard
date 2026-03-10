@@ -25,6 +25,7 @@ from semantic_exploration import (
     cluster_responses_bertopic,
     extract_topics_bertopic,
     summarize_clusters_bertopic,
+    summarize_small_dataset,
 )
 
 
@@ -160,6 +161,15 @@ if page == "Semantic Exploration":
                 st.warning(
                     f"Not enough responses for concept '{selected_concept_analysis}'. Need at least 3 responses."
                 )
+            elif len(df_q) == 5:
+                # Special-case tiny datasets: treat each response as its own 'topic'
+                summary = summarize_small_dataset(df_q)
+                st.session_state[f"df_q_{selected_concept_analysis}"] = df_q
+                st.session_state[f"summary_{selected_concept_analysis}"] = summary
+                st.session_state[f"topics_dict_{selected_concept_analysis}"] = {}
+                st.session_state[f"topic_model_{selected_concept_analysis}"] = None
+                st.session_state[f"topic_info_{selected_concept_analysis}"] = None
+                st.session_state[f"umap_{selected_concept_analysis}"] = None
             else:
                 try:
                     df_q, topic_model, topic_info, embeddings = cluster_responses_bertopic(df_q)
@@ -210,7 +220,7 @@ if page == "Semantic Exploration":
             question_text_example = None
         
         if question_text_example:
-            st.markdown(f"**Question text:** {question_text_example}")
+            st.markdown(f"## **Question text:** {question_text_example}")
         
         # Summary table
         st.subheader("Topic Summary")

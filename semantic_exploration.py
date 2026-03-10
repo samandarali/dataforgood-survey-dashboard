@@ -4,6 +4,7 @@ Semantic exploration functions for analyzing open-ended text responses using BER
 
 # Standard library imports
 import pandas as pd
+from functools import lru_cache
 
 # Third-party imports
 try:
@@ -18,7 +19,7 @@ except ImportError:
 
 try:
     from bertopic import BERTopic
-    from bertopic.representation import KeyBERTInspired
+    from bertopic.representation import KeyBERTInspired, MaximalMarginalRelevance
     from sentence_transformers import SentenceTransformer
     from umap import UMAP
     from hdbscan import HDBSCAN
@@ -26,6 +27,7 @@ try:
 except ImportError:
     BERTopic = None
     KeyBERTInspired = None
+    MaximalMarginalRelevance = None
     SentenceTransformer = None
     UMAP = None
     HDBSCAN = None
@@ -39,6 +41,13 @@ if SentenceTransformer is not None:
     except Exception:
         EMBEDDING_MODEL = None
 
+# Cache embeddings for repeated analyses (huge speed improvement)
+@lru_cache(maxsize=128)
+def embed_texts(text_tuple):
+    """Cache embeddings for repeated text analyses."""
+    if EMBEDDING_MODEL is None:
+        return None
+    return EMBEDDING_MODEL.encode(list(text_tuple), show_progress_bar=False)
 
 import re
 
@@ -86,8 +95,8 @@ def cluster_responses_bertopic(
     df_open,
     min_topic_size: int = 10,
     n_neighbors: int = 15,
-    n_components: int = 3,
-    min_dist: float = 0.0,
+    n_components: int = 2,
+    min_dist: float = 0.1, # min distance between points in the low-dimensional space
 ):
     """
     Cluster responses using BERTopic.
@@ -114,13 +123,15 @@ def cluster_responses_bertopic(
         documents = df_open["response_clean"].tolist()
         n_docs = len(documents)
 
-        # Use global embedding model (loaded once, reused for all questions)
-        embeddings = EMBEDDING_MODEL.encode(documents, show_progress_bar=False)
+        # Use cached embedding function for speed improvement on repeated analyses
+        if EMBEDDING_MODEL is None:
+            raise Exception("Embedding model not available. Please install sentence-transformers.")
+        embeddings = embed_texts(tuple(documents))
 
         # Adapt parameters based on dataset size (3-tier approach)
         if n_docs == 5:
-            # Smallest dataset: very relaxed clustering
-            effective_min_topic_size = 1
+            # Smallest dataset: relaxed but valid clustering (min_cluster_size must be >= 2)
+            effective_min_topic_size = 2
             effective_n_neighbors = 2
             effective_n_components = 2
         elif n_docs < 52:
@@ -148,13 +159,17 @@ def cluster_responses_bertopic(
             random_state=42,
         )
 
+        # Ensure HDBSCAN min_cluster_size respects library constraint (>= 2)
+        if effective_min_topic_size < 2:
+            effective_min_topic_size = 2
+
         # Initialize HDBSCAN
         hdbscan_model = HDBSCAN(
-    min_cluster_size=effective_min_topic_size,
-    min_samples=2,
-    metric="euclidean",
-    cluster_selection_method="eom",
-)
+            min_cluster_size=effective_min_topic_size,
+            min_samples = max(2, int(effective_min_topic_size * 0.75)),
+            metric="euclidean",
+            cluster_selection_method="eom",
+        )
         # Initialize CountVectorizer for c-TF-IDF with custom stopwords and token pattern
         custom_stopwords = [
             "would", "could", "use", "using", 
@@ -173,7 +188,7 @@ def cluster_responses_bertopic(
         # Combine sklearn's English stopwords with custom ones
         try:
             from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
-            all_stopwords = list(ENGLISH_STOP_WORDS) + custom_stopwords
+            all_stopwords = list(set(ENGLISH_STOP_WORDS).union(custom_stopwords))
         except ImportError:
             # Fallback to just custom stopwords if sklearn stopwords not available
             all_stopwords = custom_stopwords
@@ -185,9 +200,9 @@ def cluster_responses_bertopic(
             effective_max_df = 0.95  # More lenient max_df for small datasets
         elif n_docs < 52:
             effective_min_df = 1
-            effective_max_df = 0.9
+            effective_max_df = 0.95
         else:
-            effective_min_df = 2
+            effective_min_df = 1
             effective_max_df = 0.9
         
         vectorizer_model = CountVectorizer(
@@ -198,9 +213,21 @@ def cluster_responses_bertopic(
             token_pattern=r"(?u)\b[a-zA-Z][a-zA-Z]+\b",  # Keep only alphabetic words of length >= 2
         )
 
-        # Initialize representation model for better topic labels
+        # Initialize representation model with MMR for keyword diversity
         representation_model = None
-        if KeyBERTInspired is not None:
+        if KeyBERTInspired is not None and MaximalMarginalRelevance is not None:
+            try:
+                representation_model = [
+                    KeyBERTInspired(),
+                    MaximalMarginalRelevance(diversity=0.5)
+                ]
+            except Exception:
+                # Fallback to single KeyBERTInspired if MMR fails
+                try:
+                    representation_model = KeyBERTInspired()
+                except Exception:
+                    representation_model = None
+        elif KeyBERTInspired is not None:
             try:
                 representation_model = KeyBERTInspired()
             except Exception:
@@ -310,6 +337,8 @@ def summarize_clusters_bertopic(df_open, topics_dict, topic_info, topic_model, t
         
         cluster_df = df_open[df_open["cluster"] == cluster_id]
         cluster_size = len(cluster_df)
+        if cluster_size < 5:
+            continue
         percentage = (cluster_size / total_responses * 100) if total_responses > 0 else 0
         
         topic_data = topics_dict.get(cluster_id, {})
@@ -336,10 +365,11 @@ def summarize_clusters_bertopic(df_open, topics_dict, topic_info, topic_model, t
                 min(3, len(cluster_df))
             ).tolist()
         
-        # Filter out empty example responses
+        # Filter out empty example responses and ensure all are strings
         examples_clean = [
-            ex for ex in examples 
-            if ex and str(ex).strip()
+            str(ex).strip()
+            for ex in examples 
+            if ex is not None and str(ex).strip()
         ]
         examples_str = " | ".join(examples_clean) if examples_clean else "No examples"
         
@@ -443,4 +473,44 @@ def run_semantic_pipeline_bertopic(df, min_topic_size=10):
         df_open, min_topic_size=min_topic_size
     )
     return df_open, summary, topic_models
+
+
+def summarize_small_dataset(df_q):
+    """
+    Fallback summarization for very small datasets (e.g., exactly 5 responses)
+    where BERTopic is unstable. Each response becomes its own 'topic'.
+    """
+    import numpy as np
+
+    df_q = df_q.copy()
+
+    # Ensure we have a clean text column to work with
+    if "response_clean" in df_q.columns:
+        texts = df_q["response_clean"].fillna("").astype(str)
+    else:
+        texts = df_q["response"].fillna("").astype(str)
+
+    n = len(df_q)
+    if n == 0:
+        return pd.DataFrame(
+            columns=["cluster", "topic_name", "size", "percentage", "keywords", "example_responses"]
+        )
+
+    rows = []
+    for idx, text in enumerate(texts):
+        tokens = [t for t in text.split() if len(t) > 3]
+        keywords = ", ".join(tokens[:5]) if tokens else "No keywords"
+
+        rows.append(
+            {
+                "cluster": idx,
+                "topic_name": f"Response {idx + 1}",
+                "size": 1,
+                "percentage": float(np.round(100.0 / n, 1)),
+                "keywords": keywords,
+                "example_responses": text or "No text",
+            }
+        )
+
+    return pd.DataFrame(rows)
 

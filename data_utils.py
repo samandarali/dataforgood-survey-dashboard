@@ -696,7 +696,17 @@ def explore_semantic_text(df: pd.DataFrame):
         df = create_survey_session_id(df)
 
     concepts = df.qtype.open_ended_text_questions()
-    cols = ["concept_key", "question_number", "question_text", "survey_session_id", "response"]
+    # Include survey_type and survey_phase so we can analyze open‑ended
+    # questions by concept_key *and* survey metadata (type, phase).
+    cols = [
+        "concept_key",
+        "question_number",
+        "question_text",
+        "survey_type",
+        "survey_phase",
+        "survey_session_id",
+        "response",
+    ]
 
     # Guard against missing columns to give a clearer error
     missing = [c for c in cols if c not in df.columns]

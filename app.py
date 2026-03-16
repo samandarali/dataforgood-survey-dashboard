@@ -86,12 +86,38 @@ if page == "Semantic Exploration":
     
     # Load semantic data
     @st.cache_data
-    def load_semantic_data():
+    def load_semantic_data(_version: str = "v2"):
         """Load data for semantic exploration."""
         df_sub = explore_semantic_text(df)
         return df_sub
     
-    df_sub = load_semantic_data()
+    # Bump _version to refresh cache when we change which columns are included
+    df_sub = load_semantic_data("v2")
+
+    # ---------------------------------
+    # Semantic-level filters (survey_type only)
+    # ---------------------------------
+    st.sidebar.subheader("Semantic filters")
+    # Prefer survey types present in the open-ended subset; fall back to full df.
+    available_types = []
+    if "survey_type" in df_sub.columns:
+        available_types = sorted(df_sub["survey_type"].dropna().unique().tolist())
+    if not available_types and "survey_type" in df.columns:
+        available_types = sorted(df["survey_type"].dropna().unique().tolist())
+    sem_survey_types = ["All"] + available_types if available_types else ["All"]
+
+    selected_sem_survey_type = st.sidebar.selectbox(
+        "Survey type (semantic)",
+        options=sem_survey_types,
+        index=0,
+    )
+    if selected_sem_survey_type == "All":
+        st.sidebar.caption("Pick a specific survey type to run BERTopic per type.")
+
+    df_sub_filtered = df_sub.copy()
+    # Only filter by survey_type; survey_phase is always POST in current data.
+    if "survey_type" in df_sub_filtered.columns and selected_sem_survey_type != "All":
+        df_sub_filtered = df_sub_filtered[df_sub_filtered["survey_type"] == selected_sem_survey_type]
     
     # Missing responses analysis
     st.header(" Missing Responses Analysis")
@@ -104,19 +130,24 @@ if page == "Semantic Exploration":
         empty = (x.astype(str).str.strip() == "").sum()
         return (missing + empty) / len(x) * 100
     
+    # Group by concept_key + survey_type to see patterns
+    group_cols = ["concept_key"]
+    if "survey_type" in df_sub_filtered.columns:
+        group_cols.append("survey_type")
+
     missing_stats = (
-        df_sub.groupby("concept_key")["response"]
+        df_sub_filtered.groupby(group_cols)["response"]
         .apply(calc_missing_pct)
         .reset_index(name="missing_pct")
     )
     
     total_counts = (
-        df_sub.groupby("concept_key")["response"]
+        df_sub_filtered.groupby(group_cols)["response"]
         .count()
         .reset_index(name="total_responses")
     )
     
-    missing_stats = missing_stats.merge(total_counts, on="concept_key")
+    missing_stats = missing_stats.merge(total_counts, on=group_cols)
     missing_stats = missing_stats.sort_values("missing_pct", ascending=False)
     
     col1, col2 = st.columns(2)
@@ -134,17 +165,28 @@ if page == "Semantic Exploration":
             missing_stats,
             x="concept_key",
             y="missing_pct",
-            title="Percentage of Missing Responses by Concept",
-            labels={"missing_pct": "Missing %", "concept_key": "Concept Key"},
+            color="survey_type" if "survey_type" in missing_stats.columns else None,
+            barmode="group",
+            title="Percentage of Missing Responses by Concept / Survey type",
+            labels={
+                "missing_pct": "Missing %",
+                "concept_key": "Concept Key",
+                "survey_type": "Survey type",
+            },
         )
         fig_missing.update_xaxes(tickangle=45)
         st.plotly_chart(fig_missing, use_container_width=True)
     
-    df_open = clean_responses(df_sub)
+    # Apply same filters for semantic analysis
+    df_open = clean_responses(df_sub_filtered)
     
     # Semantic Analysis per Concept
     st.header("Semantic Analysis by Concept")
     st.caption("Using **BERTopic** for topic modeling (minimum topic size = 10 responses per topic).")
+
+    # Require a specific survey_type for semantic analysis so clusters are per type.
+    if selected_sem_survey_type == "All":
+        st.info("Select a specific **Survey type (semantic)** in the left sidebar to run BERTopic analysis.")
     
     concept_options = sorted(df_open["concept_key"].dropna().unique().tolist())
     selected_concept_analysis = st.selectbox(
@@ -153,7 +195,8 @@ if page == "Semantic Exploration":
         index=0,
     )
     
-    if st.button("Run Semantic Analysis", type="primary"):
+    run_disabled = selected_sem_survey_type == "All"
+    if st.button("Run Semantic Analysis", type="primary", disabled=run_disabled):
         with st.spinner("Computing embeddings and clustering responses..."):
             df_q = df_open[df_open["concept_key"] == selected_concept_analysis].copy()
             

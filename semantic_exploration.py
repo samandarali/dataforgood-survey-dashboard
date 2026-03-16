@@ -128,22 +128,35 @@ def cluster_responses_bertopic(
             raise Exception("Embedding model not available. Please install sentence-transformers.")
         embeddings = embed_texts(tuple(documents))
 
-        # Adapt parameters based on dataset size (3-tier approach)
+        # Adapt parameters based on dataset size (more granular for small sets)
+        # Goal: for n_docs < 30 (and especially < 20 / < 10) allow smaller clusters.
         if n_docs == 5:
             # Smallest dataset: relaxed but valid clustering (min_cluster_size must be >= 2)
             effective_min_topic_size = 2
             effective_n_neighbors = 2
             effective_n_components = 2
-        elif n_docs < 52:
-            # Very small datasets: relaxed clustering
+        elif n_docs < 10:
             effective_min_topic_size = 2
-            effective_n_neighbors = max(2, n_docs // 2)
+            effective_n_neighbors = 2
+            effective_n_components = 2
+        elif n_docs < 20:
+            effective_min_topic_size = 2
+            effective_n_neighbors = max(3, min(8, n_docs - 1))
+            effective_n_components = 2
+        elif n_docs < 30:
+            effective_min_topic_size = 3
+            effective_n_neighbors = max(5, min(12, n_docs - 1))
+            effective_n_components = 2
+        elif n_docs < 52:
+            # Small datasets: relaxed clustering
+            effective_min_topic_size = max(3, n_docs // 12)
+            effective_n_neighbors = max(8, min(n_neighbors, n_docs - 1))
             effective_n_components = max(2, min(n_components, n_docs - 1))
         elif n_docs < 100:
             # Medium datasets: moderate clustering
-            effective_min_topic_size = max(3, n_docs // 10)
-            effective_n_neighbors = max(5, min(n_neighbors, n_docs - 1))
-            effective_n_components = max(3, min(n_components, n_docs - 1))
+            effective_min_topic_size = max(4, n_docs // 10)
+            effective_n_neighbors = max(10, min(n_neighbors, n_docs - 1))
+            effective_n_components = max(2, min(n_components, n_docs - 1))
         else:
             # Large datasets: normal/default clustering
             effective_min_topic_size = min_topic_size
@@ -164,9 +177,15 @@ def cluster_responses_bertopic(
             effective_min_topic_size = 2
 
         # Initialize HDBSCAN
+        # For very small datasets, relax min_samples to encourage more clusters.
+        if n_docs < 20:
+            effective_min_samples = 1
+        else:
+            effective_min_samples = max(2, int(effective_min_topic_size * 0.75))
+
         hdbscan_model = HDBSCAN(
             min_cluster_size=effective_min_topic_size,
-            min_samples = max(2, int(effective_min_topic_size * 0.75)),
+            min_samples=effective_min_samples,
             metric="euclidean",
             cluster_selection_method="eom",
         )
@@ -245,7 +264,13 @@ def cluster_responses_bertopic(
 
         # Fit the model
         topics, probs = topic_model.fit_transform(documents)
-        topic_model.reduce_topics(documents, nr_topics="auto")
+
+        # For small datasets, automatic topic reduction can over-merge.
+        if n_docs >= 30:
+            try:
+                topic_model.reduce_topics(documents, nr_topics="auto")
+            except Exception:
+                pass
 
         # Generate better topic labels
         try:
@@ -327,6 +352,16 @@ def summarize_clusters_bertopic(df_open, topics_dict, topic_info, topic_model, t
         total_responses = len(df_open)
     
     summaries = []
+
+    # Show smaller clusters for small datasets
+    if total_responses < 10:
+        min_cluster_to_show = 2
+    elif total_responses < 20:
+        min_cluster_to_show = 2
+    elif total_responses < 30:
+        min_cluster_to_show = 3
+    else:
+        min_cluster_to_show = 5
     
     # Create mapping from topic_id to BERTopic-generated topic name
     topic_name_map = dict(zip(topic_info["Topic"], topic_info.get("Name", topic_info["Topic"])))
@@ -337,7 +372,7 @@ def summarize_clusters_bertopic(df_open, topics_dict, topic_info, topic_model, t
         
         cluster_df = df_open[df_open["cluster"] == cluster_id]
         cluster_size = len(cluster_df)
-        if cluster_size < 5:
+        if cluster_size < min_cluster_to_show:
             continue
         percentage = (cluster_size / total_responses * 100) if total_responses > 0 else 0
         
@@ -352,18 +387,44 @@ def summarize_clusters_bertopic(df_open, topics_dict, topic_info, topic_model, t
         ]
         keywords_str = ", ".join(keywords_clean) if keywords_clean else "No keywords"
         
-        # Get representative documents from BERTopic
+        # Prefer original responses for examples (more readable than response_clean)
+        examples = []
+        response_col = "response" if "response" in cluster_df.columns else "response_clean"
+
+        # First try representative docs, but filter out non-informative ones (e.g., "0", "1")
         try:
-            examples = topic_model.get_representative_docs(cluster_id)
-            if examples is None:
-                examples = []
-            else:
-                examples = examples[:3] if len(examples) > 3 else examples
+            rep = topic_model.get_representative_docs(cluster_id) if topic_model is not None else None
+            if rep:
+                rep = rep[:3] if len(rep) > 3 else rep
+                rep_clean = []
+                for ex in rep:
+                    s = "" if ex is None else str(ex).strip()
+                    if not s:
+                        continue
+                    # Drop pure digits / tiny tokens that aren't useful as "examples"
+                    if s.isdigit():
+                        continue
+                    if len(s) < 4:
+                        continue
+                    rep_clean.append(s)
+                examples = rep_clean
         except Exception:
-            # Fallback to sampling from cluster_df if get_representative_docs fails
-            examples = cluster_df["response_clean"].sample(
-                min(3, len(cluster_df))
-            ).tolist()
+            examples = []
+
+        # If representative docs are empty or low quality, sample from the cluster's raw responses
+        if not examples:
+            try:
+                candidates = (
+                    cluster_df[response_col]
+                    .fillna("")
+                    .astype(str)
+                    .map(lambda x: x.strip())
+                )
+                candidates = candidates[candidates != ""]
+                if len(candidates) > 0:
+                    examples = candidates.sample(min(3, len(candidates)), random_state=42).tolist()
+            except Exception:
+                examples = []
         
         # Filter out empty example responses and ensure all are strings
         examples_clean = [

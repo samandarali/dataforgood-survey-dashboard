@@ -20,8 +20,6 @@ def filter_survey_df(df, filter_survey, filter_survey_version):
 
 # function for providing summary table
 
-
-
 def create_survey_session_id(df):
     df = df.copy()
     df['timestamp'] = pd.to_datetime(df['timestamp'])
@@ -91,9 +89,6 @@ def split_by_phase(df, phase_col="survey_phase"):
     
     return df_pre, df_post
 
-
-
-# Custom Accessor to for filtering survey questions by response type
 @pd.api.extensions.register_dataframe_accessor("qtype")
 class QuestionTypeAccessor:
     """
@@ -119,7 +114,6 @@ class QuestionTypeAccessor:
     def __init__(self, pandas_obj):
         self._obj = pandas_obj
 
-    # ---------- question lists ----------
     def likert_text_questions(self):
         return self._obj.loc[self._obj["scale_type"] == "Likert Scale Text", "concept_key"].dropna().unique()
 
@@ -134,7 +128,6 @@ class QuestionTypeAccessor:
     def open_ended_text_questions(self):
         return self._obj.loc[self._obj["scale_type"] == "Open-Ended", "concept_key"].dropna().unique()
 
-    # ---------- internal helpers ----------
     def _concept_labels(self, question_text_col="question_text"):
         cols = ["concept_key", question_text_col]
         if question_text_col not in self._obj.columns:
@@ -266,7 +259,6 @@ class QuestionTypeAccessor:
 
             # ---------- Pie ----------
 
-            # Pie (hidden from legend to avoid duplicating bar entries)
             fig.add_trace(
                 go.Pie(
                     labels=[str(x) for x in likert_order],
@@ -308,7 +300,6 @@ class QuestionTypeAccessor:
 
         return figs
     
-    # ---------- public plotting methods ----------
     def plot_LikText_q(
         self,
         question_text_col="question_text",
@@ -487,7 +478,6 @@ class QuestionTypeAccessor:
                 except Exception:
                     response_order = None
 
-            # If no explicit ordering from possible_responses, infer from data
             if response_order is None:
                 response_order = sorted(tmp["response"].dropna().astype(str).unique())
 
@@ -528,12 +518,8 @@ class QuestionTypeAccessor:
             label = concept_labels.get(concept, str(concept))
             wrapped = "<br>".join(textwrap.wrap(f"{concept}: {label}", wrap_width))
 
-            # Color mapping per response option, using Likert-style helper
             response_colors = {resp: get_categorical_color(resp) for resp in response_order}
 
-            # -------------------------------------------------
-            # 3) Build figure: bars + pie
-            # -------------------------------------------------
             max_side_bars = 10
             if num_ws <= max_side_bars:
                 fig = make_subplots(
@@ -587,7 +573,6 @@ class QuestionTypeAccessor:
                 col=1,
             )
 
-            # Pie (hidden from legend to avoid duplication)
             fig.add_trace(
                 go.Pie(
                     labels=[str(x) for x in response_order],
@@ -642,17 +627,13 @@ def get_categorical_color(response_text):
     """Map categorical responses to Likert-style colors."""
     response_lower = str(response_text).lower().strip()
     
-    # Helper for whole-word matching (so "no" doesn't match "not")
     import re
     def has_word(word: str) -> bool:
         return re.search(r"\b" + re.escape(word) + r"\b", response_lower) is not None
 
-    # 1) Explicit "still unsure" (separate from plain "not sure" and "no")
     if "still unsure" in response_lower:
-        # Amber-ish color distinct from both red "No" and grey "Not sure"
         return "#fdb863"
 
-    # 2) Strong positive / positive -> Green shades (like Agree / Strongly Agree)
     if any(word in response_lower for word in ["always", "often", "very familiar", "advanced", "yes"]):
         if "strongly" in response_lower or "very" in response_lower or "advanced" in response_lower or "always" in response_lower:
             return "#1b7837"  # Dark green (Strongly positive)
@@ -661,21 +642,18 @@ def get_categorical_color(response_text):
         else:
             return "#a6dba0"  # Light green (Positive)
 
-    # 3) Pure negative -> Red shades (like Disagree)
     if has_word("no") or has_word("never") or has_word("rarely") or "new to this topic" in response_lower:
         if "strongly" in response_lower or "never" in response_lower:
             return "#b2182b"  # Dark red (Strongly negative)
         else:
             return "#ef8a62"  # Light orange/red (Negative)
 
-    # 4) Neutral / uncertain -> Grey (like Neither / Not sure)
     if "not sure" in response_lower or "unsure" in response_lower or "sometimes" in response_lower or "somewhat knowledgeable" in response_lower:
         return "#bdbdbd"  # Grey
     
     # Default fallback colors for other responses
     # Use a neutral palette for other responses
     fallback_colors = ['#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
-    # Hash the response text to get a consistent color
     
     hash_val = int(hashlib.md5(str(response_text).encode()).hexdigest(), 16)
     return fallback_colors[hash_val % len(fallback_colors)]
@@ -696,8 +674,6 @@ def explore_semantic_text(df: pd.DataFrame):
         df = create_survey_session_id(df)
 
     concepts = df.qtype.open_ended_text_questions()
-    # Include survey_type and survey_phase so we can analyze open‑ended
-    # questions by concept_key *and* survey metadata (type, phase).
     cols = [
         "concept_key",
         "question_number",
@@ -708,7 +684,6 @@ def explore_semantic_text(df: pd.DataFrame):
         "response",
     ]
 
-    # Guard against missing columns to give a clearer error
     missing = [c for c in cols if c not in df.columns]
     if missing:
         raise KeyError(f"Missing required columns for semantic exploration: {missing}")
@@ -783,7 +758,6 @@ SUMMARY_METRIC_OPTIONS = {
     "num_observations": ("response_id", "nunique"),
 }
 
-# Human-readable labels for the UI (key -> label).
 SUMMARY_METRIC_LABELS = {
     "num_questions": "Number of questions (concept_key)",
     "num_observations": "Number of observations (response_id)",

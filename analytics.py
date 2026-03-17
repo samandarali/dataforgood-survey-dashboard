@@ -368,6 +368,10 @@ def run_wilcoxon_vs_neutral(
     if results_df.empty:
         return results_df
 
+    for col in ("W_stat", "p_value", "p_adj_BH"):
+        if col in results_df.columns:
+            results_df[col] = pd.to_numeric(results_df[col], errors="coerce")
+
     testable = results_df["p_value"].notna()
     if testable.sum() > 0:
         reject, p_adj, _, _ = multipletests(results_df.loc[testable, "p_value"], method="fdr_bh")

@@ -42,45 +42,82 @@ st.set_page_config(
 # ─────────────────────────────────────────────────────────────────────────────
 # Custom CSS — clean card-style UI
 # ─────────────────────────────────────────────────────────────────────────────
-st.markdown(
-    """
-    <style>
-    /* ── fact card ── */
-    .fact-card {
-        background: #f8f9fa;
-        border: 1px solid #dee2e6;
-        border-radius: 10px;
-        padding: 18px 20px 12px;
-        text-align: center;
-        margin-bottom: 8px;
-    }
-    .fact-card .value {
-        font-size: 2.1rem;
-        font-weight: 700;
-        color: #1D9E75;
-        line-height: 1.1;
-    }
-    .fact-card .label {
-        font-size: 0.82rem;
-        color: #6c757d;
-        margin-top: 4px;
-    }
-    /* ── section title ── */
-    .section-title {
-        font-size: 1.05rem;
-        font-weight: 600;
-        color: #343a40;
-        margin: 18px 0 6px;
-        padding-bottom: 4px;
-        border-bottom: 2px solid #1D9E75;
-    }
-    /* ── divider ── */
-    hr.thin { border: none; border-top: 1px solid #dee2e6; margin: 20px 0; }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+st.markdown("""
+<style>
 
+/* ── fact card ── */
+.fact-card {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 10px;
+    padding: 18px 20px 12px;
+    text-align: center;
+    margin-bottom: 8px;
+}
+
+.fact-card .value {
+    font-size: 2.1rem;
+    font-weight: 700;
+    color: #1D9E75;
+    line-height: 1.1;
+}
+
+.fact-card .label {
+    font-size: 0.82rem;
+    color: #6c757d;
+    margin-top: 4px;
+}
+
+/* ── section title ── */
+.section-title {
+    font-size: 28px !important;
+    font-weight: 700 !important;
+    color: #343a40;
+    margin: 18px 0 8px;
+    padding-bottom: 4px;
+    border-bottom: 2px solid #1D9E75;
+}
+
+/* ── expander title ── */
+details summary p,
+[data-testid="stExpander"] summary p {
+    font-size: 22px !important;
+    font-weight: 600 !important;
+    color: #1f4e79;          
+}
+
+/* ── guide headings ── */
+h5 {
+    font-size: 20px !important;
+    font-weight: 700 !important;
+         
+}
+
+/* ── divider ── */
+hr.thin {
+    border: none;
+    border-top: 1px solid #dee2e6;
+    margin: 20px 0;
+}
+            
+[data-testid="stExpander"] summary {
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 8px 12px;
+}    
+                    
+button[data-baseweb="tab"] {
+    font-size: 24px !important;
+    font-weight: 700 !important;
+    padding: 10px 18px !important;
+}
+
+button[data-baseweb="tab"][aria-selected="true"] {
+    color: #1D9E75 !important;
+}
+</style>
+""", unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Data loading (cached)
@@ -159,7 +196,17 @@ if selected_school != "All":
 # ─────────────────────────────────────────────────────────────────────────────
 facts = an.compute_fact_cards(df)
 
-st.markdown('<p class="section-title">📌 Key Facts</p>', unsafe_allow_html=True)
+st.markdown("""
+<style>
+.big-title {
+    font-size: 28px;
+    font-weight: 700;
+    margin-bottom: 10px;
+}
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown('<div class="big-title">📌 Key Facts</div>', unsafe_allow_html=True)
 
 c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
 
@@ -183,26 +230,31 @@ st.markdown('<hr class="thin">', unsafe_allow_html=True)
 
 
 ################Add cards for “common pre/post qs by type”
+# Parent row with two large containers
+left_col, right_col = st.columns(2)
 
+# LEFT: Common PRE/POST
+with left_col:
+    st.markdown("### 🔁 Common PRE/POST Questions by Response Type")
 
-st.markdown('<p class="section-title">🔁 Common PRE/POST Questions by Response Type</p>', unsafe_allow_html=True)
+    common_items = list(facts["common_questions_by_type"].items())
+    common_cols = st.columns(len(common_items)) if common_items else []
 
-common_items = list(facts["common_questions_by_type"].items())
-common_cols = st.columns(len(common_items)) if common_items else []
+    for col, (rtype, count) in zip(common_cols, common_items):
+        short_label = f"Common Qs ({rtype})"
+        _card(col, count, short_label)
 
-for col, (rtype, count) in zip(common_cols, common_items):
-    short_label = f"Common Qs ({rtype})"
-    _card(col, count, short_label)
-##Add cards for “questions only in post by type”
+# RIGHT: POST-only
+with right_col:
+    st.markdown("### ➕ POST-only Questions by Response Type")
 
-st.markdown('<p class="section-title">➕ POST-only Questions by Response Type</p>', unsafe_allow_html=True)
+    post_only_items = list(facts["post_only_questions_by_type"].items())
+    post_only_cols = st.columns(len(post_only_items)) if post_only_items else []
 
-post_only_items = list(facts["post_only_questions_by_type"].items())
-post_only_cols = st.columns(len(post_only_items)) if post_only_items else []
+    for col, (rtype, count) in zip(post_only_cols, post_only_items):
+        short_label = f"POST-only Qs ({rtype})"
+        _card(col, count, short_label)
 
-for col, (rtype, count) in zip(post_only_cols, post_only_items):
-    short_label = f"POST-only Qs ({rtype})"
-    _card(col, count, short_label)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -250,7 +302,8 @@ with tab1:
 
             if not mw_results.empty:
                 # results table (collapsible)
-                with st.expander("📄 Show results table", expanded=False):
+                st.caption("Expand below to inspect question-level statistical results.")
+                with st.expander("📂 Click to expand results table", expanded=False):
                     display_df = mw_results[[
                         "question", "n_pre", "n_post",
                         "pre_median", "post_median", "median_shift",
@@ -331,7 +384,8 @@ with tab1:
                 wlcx_results = an.run_wilcoxon_vs_neutral(df_post, post_only_qs)
 
             if not wlcx_results.empty:
-                with st.expander("📄 Show results table", expanded=False):
+                st.caption("Expand below to inspect question-level statistical results.")
+                with st.expander("📂 Click to expand results table", expanded=False):
                     show_cols = [c for c in [
                         "question", "scale_type", "n", "median", "pct_above",
                         "W_stat", "p_value", "p_adj_BH", "significant", "note",
@@ -394,26 +448,36 @@ with tab2:
         "Each session ID encodes survey type, version, phase, date and AM/PM slot."
     )
 
-    # Optional phase filter for cross-session tab
-    phase_options = ["All"] + sorted(df["survey_phase"].dropna().unique().tolist())
-    selected_phase = st.selectbox(
-        "Filter by phase (optional)",
-        options=phase_options,
-        index=0,
-        key="tab2_phase",
-    )
-
+    # 1) Choose question type first
     question_type = st.radio(
-        "Question type to display",
-        options=["Likert Text", "Likert Numeric", "Categorical",
-                 "Common PRE/POST (bar + mean)", "POST-only (bar + mean)"],
+        "Question type",
+        [
+            "Likert Text",
+            "Likert Numeric",
+            "Categorical",
+            "Common PRE/POST",
+            "POST-only"
+        ],
         horizontal=True,
-        key="tab2_qtype",
+        key="tab2_question_type",
     )
 
+    # 2) Show phase filter only when relevant
+    selected_phase = "All"
+    if question_type in ["Likert Text", "Likert Numeric", "Categorical"]:
+        phase_options = ["All"] + sorted(df["survey_phase"].dropna().unique().tolist())
+        selected_phase = st.selectbox(
+            "Survey phase",
+            options=phase_options,
+            index=0,
+            key="tab2_phase",
+        )
+
+    # 3) Apply filters
     df_tab2 = df.copy()
-    if selected_phase != "All":
-        df_tab2 = df_tab2[df_tab2["survey_phase"] == selected_phase]
+    if question_type in ["Likert Text", "Likert Numeric", "Categorical"]:
+        if selected_phase != "All":
+            df_tab2 = df_tab2[df_tab2["survey_phase"] == selected_phase]
 
     tab2_title = f"{survey_label} | {selected_phase} | {question_type}"
 
@@ -422,15 +486,20 @@ with tab2:
     else:
         with st.spinner("Building plots…"):
             if question_type == "Likert Text":
-                figs = an.plot_likert_by_session(df_tab2, likert_kind="text",  title=tab2_title)
+                figs = an.plot_likert_by_session(
+                    df_tab2, likert_kind="text", title=tab2_title
+                )
             elif question_type == "Likert Numeric":
-                figs = an.plot_likert_by_session(df_tab2, likert_kind="numeric", title=tab2_title)
+                figs = an.plot_likert_by_session(
+                    df_tab2, likert_kind="numeric", title=tab2_title
+                )
             elif question_type == "Categorical":
                 figs = an.plot_categorical_by_session(df_tab2, title=tab2_title)
-            elif question_type == "Common PRE/POST (bar + mean)":
+            elif question_type == "Common PRE/POST":
                 figs = an.plot_pre_post_bar_with_mean(df_tab2, common_qs)
             else:  # POST-only
-                df_post_tab2 = df_tab2[df_tab2["survey_phase"] == "POST"]
+                df_post_tab2 = df.copy()
+                df_post_tab2 = df_post_tab2[df_post_tab2["survey_phase"] == "POST"]
                 figs = an.plot_post_bar_with_mean(df_post_tab2, post_only_qs)
 
         if not figs:

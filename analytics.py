@@ -166,6 +166,57 @@ def get_post_only_questions(df: pd.DataFrame) -> list[str]:
 # ══════════════════════════════════════════════════════════════════════════════
 # 5.  FACT-CARD COMPUTATIONS
 # ══════════════════════════════════════════════════════════════════════════════
+def get_question_counts_by_phase(df: pd.DataFrame, id_col: str = "concept_key") -> dict:
+    pre = df[df["survey_phase"] == "PRE"]
+    post = df[df["survey_phase"] == "POST"]
+
+    return {
+        "pre_questions_total": pre[id_col].dropna().nunique() if id_col in df.columns else pre["question_text"].dropna().nunique(),
+        "post_questions_total": post[id_col].dropna().nunique() if id_col in df.columns else post["question_text"].dropna().nunique(),
+    }
+
+
+def get_common_pre_post_questions_by_type(df: pd.DataFrame, id_col: str = "concept_key") -> dict:
+    out = {}
+
+    for scale_type, g in df.groupby("scale_type", dropna=False):
+        pre_ids = set(
+            g.loc[g["survey_phase"] == "PRE", id_col].dropna().unique()
+        ) if id_col in g.columns else set(
+            g.loc[g["survey_phase"] == "PRE", "question_text"].dropna().unique()
+        )
+
+        post_ids = set(
+            g.loc[g["survey_phase"] == "POST", id_col].dropna().unique()
+        ) if id_col in g.columns else set(
+            g.loc[g["survey_phase"] == "POST", "question_text"].dropna().unique()
+        )
+
+        out[str(scale_type)] = len(pre_ids & post_ids)
+
+    return out
+
+
+def get_post_only_questions_by_type(df: pd.DataFrame, id_col: str = "concept_key") -> dict:
+    out = {}
+
+    for scale_type, g in df.groupby("scale_type", dropna=False):
+        pre_ids = set(
+            g.loc[g["survey_phase"] == "PRE", id_col].dropna().unique()
+        ) if id_col in g.columns else set(
+            g.loc[g["survey_phase"] == "PRE", "question_text"].dropna().unique()
+        )
+
+        post_ids = set(
+            g.loc[g["survey_phase"] == "POST", id_col].dropna().unique()
+        ) if id_col in g.columns else set(
+            g.loc[g["survey_phase"] == "POST", "question_text"].dropna().unique()
+        )
+
+        out[str(scale_type)] = len(post_ids - pre_ids)
+
+    return out
+
 
 def compute_fact_cards(df: pd.DataFrame) -> dict:
     """
@@ -181,23 +232,26 @@ def compute_fact_cards(df: pd.DataFrame) -> dict:
     pre_sessions          int  – unique survey_session_id where phase == PRE
     post_sessions         int  – unique survey_session_id where phase == POST
     """
-    pre  = df[df["survey_phase"] == "PRE"]
-    post = df[df["survey_phase"] == "POST"]
+    pre = df[df["survey_phase"] == "PRE"].copy()
+    post = df[df["survey_phase"] == "POST"].copy()
 
-    common   = get_common_pre_post_questions(df)
-    post_only = get_post_only_questions(df)
+    question_counts = get_question_counts_by_phase(df, id_col="concept_key")
+    common_by_type = get_common_pre_post_questions_by_type(df, id_col="concept_key")
+    post_only_by_type = get_post_only_questions_by_type(df, id_col="concept_key")
 
-    pre_sessions  = pre["survey_session_id"].nunique()  if "survey_session_id" in df.columns else 0
+    pre_sessions = pre["survey_session_id"].nunique() if "survey_session_id" in df.columns else 0
     post_sessions = post["survey_session_id"].nunique() if "survey_session_id" in df.columns else 0
 
     return {
-        "pre_observations":    pre["response_id"].nunique()  if "response_id" in df.columns else len(pre),
-        "post_observations":   post["response_id"].nunique() if "response_id" in df.columns else len(post),
-        "common_questions":    len(common),
-        "post_only_questions": len(post_only),
-        "n_schools":           df["school_id"].nunique() if "school_id" in df.columns else 0,
-        "pre_sessions":        pre_sessions,
-        "post_sessions":       post_sessions,
+        "pre_observations": pre["response_id"].nunique() if "response_id" in df.columns else len(pre),
+        "post_observations": post["response_id"].nunique() if "response_id" in df.columns else len(post),
+        "pre_questions_total": question_counts["pre_questions_total"],
+        "post_questions_total": question_counts["post_questions_total"],
+        "common_questions_by_type": common_by_type,
+        "post_only_questions_by_type": post_only_by_type,
+        "n_schools": df["school_id"].nunique() if "school_id" in df.columns else 0,
+        "pre_sessions": pre_sessions,
+        "post_sessions": post_sessions,
     }
 
 
@@ -429,7 +483,7 @@ def plot_mann_whitney_shift(
     fig = make_subplots(
         rows=1, cols=2,
         subplot_titles=["Median shift per question", "PRE vs POST medians"],
-        horizontal_spacing=0.22,
+        horizontal_spacing=0.20,
         column_widths=[0.45, 0.55],
     )
 

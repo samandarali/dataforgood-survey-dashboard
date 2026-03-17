@@ -116,6 +116,17 @@ button[data-baseweb="tab"] {
 button[data-baseweb="tab"][aria-selected="true"] {
     color: #1D9E75 !important;
 }
+            
+/* ── tab titles ── */
+button[data-baseweb="tab"] p {
+    font-size: 1.30rem;
+    font-weight: 600;
+}
+            
+/* ── spacing above tab bar ── */
+div[data-testid="stTabs"] {
+    margin-top: 2rem;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -210,9 +221,10 @@ st.markdown('<div class="big-title">📌 Key Facts</div>', unsafe_allow_html=Tru
 
 c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
 
-def _card(col, value, label):
+def _card(col, value, label, bg_color="#f8f9fa"):
     col.markdown(
-        f'<div class="fact-card"><div class="value">{value}</div>'
+        f'<div class="fact-card" style="background:{bg_color};">'
+        f'<div class="value">{value}</div>'
         f'<div class="label">{label}</div></div>',
         unsafe_allow_html=True,
     )
@@ -226,10 +238,10 @@ _card(c5, facts["n_schools"], "Schools")
 _card(c6, facts["pre_sessions"], "PRE data collection sessions")
 _card(c7, facts["post_sessions"], "POST data collection sessions")
 
-st.markdown('<hr class="thin">', unsafe_allow_html=True)
-
 
 ################Add cards for “common pre/post qs by type”
+
+
 # Parent row with two large containers
 left_col, right_col = st.columns(2)
 
@@ -239,10 +251,9 @@ with left_col:
 
     common_items = list(facts["common_questions_by_type"].items())
     common_cols = st.columns(len(common_items)) if common_items else []
-
     for col, (rtype, count) in zip(common_cols, common_items):
         short_label = f"Common Qs ({rtype})"
-        _card(col, count, short_label)
+        _card(col, count, short_label, bg_color="#fafde8")
 
 # RIGHT: POST-only
 with right_col:
@@ -253,7 +264,7 @@ with right_col:
 
     for col, (rtype, count) in zip(post_only_cols, post_only_items):
         short_label = f"POST-only Qs ({rtype})"
-        _card(col, count, short_label)
+        _card(col, count, short_label, bg_color="#77f1e7")
 
 
 

@@ -83,11 +83,22 @@ st.markdown("""
   background: #ffffff;
   border: 1px solid #e5e7eb;
   border-radius: 16px;
-  padding: 22px 22px 18px;
+  padding: 10px 22px 18px;
   box-shadow: 0 10px 20px rgba(17, 24, 39, 0.06);
+  min-height: 220px;
+  height: 220px;
+  box-sizing: border-box;
+}
+.nav-card-green {
+  background: #ecfdf5;
+  border: 1.5px solid #6ee7b7;
+}
+.nav-card-blue {
+  background: #eff6ff;
+  border: 1.5px solid #93c5fd;
 }
 .nav-card h3 {
-  margin: 0 0 6px 0;
+  margin: 0 0 2px 0;
   font-size: 22px;
   font-weight: 750;
   color: #111827;
@@ -199,62 +210,100 @@ def _goto(page: str):
 
 def _render_top_nav(active: str):
     """
-    Executive-style top nav for switching between the two dashboards.
-    This is intentionally simple (Streamlit-native) and keeps navigation available
-    after entering either dashboard.
+    Portal cards nav — always shows both cards with their descriptions.
+    The active card's button is highlighted red; the inactive one uses its
+    original green/blue colour.
     """
+    # Build per-column button colours based on which page is active
+    if active == "Compare Surveys":
+        left_bg, left_border, left_color   = "#e53e3e", "#c53030", "#ffffff"
+        left_hover_bg, left_hover_border   = "#c53030", "#9b2c2c"
+        right_bg, right_border, right_color = "#dbeafe", "#93c5fd", "#1e3a5f"
+        right_hover_bg, right_hover_border  = "#bfdbfe", "#60a5fa"
+    else:
+        left_bg, left_border, left_color   = "#d1fae5", "#6ee7b7", "#065f46"
+        left_hover_bg, left_hover_border   = "#a7f3d0", "#34d399"
+        right_bg, right_border, right_color = "#e53e3e", "#c53030", "#ffffff"
+        right_hover_bg, right_hover_border  = "#c53030", "#9b2c2c"
+
     st.markdown(
-        """
+        f"""
         <style>
-          .top-tabs { max-width: 980px; margin: 0 auto 0.5rem auto; }
-          .top-tabs [data-testid="stHorizontalBlock"] { gap: 0.4rem; }
-          .top-tabs button[kind="secondary"] {
-            border-radius: 999px !important;
-            border: 1px solid #e5e7eb !important;
-            background: #ffffff !important;
-            color: #374151 !important;
+          /* Left column (Compare) button */
+          [data-testid="stHorizontalBlock"] > div:nth-child(1) .stButton > button {{
+            background: {left_bg} !important;
+            border: 1.5px solid {left_border} !important;
+            color: {left_color} !important;
+            border-radius: 10px !important;
             font-weight: 700 !important;
-            padding: 0.55rem 0.9rem !important;
-          }
-          .top-tabs .active button[kind="secondary"] {
-            border: 1px solid #10b981 !important;
-            background: #ecfdf5 !important;
-            color: #065f46 !important;
-          }
+            padding: 0.65rem 1rem !important;
+          }}
+          [data-testid="stHorizontalBlock"] > div:nth-child(1) .stButton > button:hover {{
+            background: {left_hover_bg} !important;
+            border-color: {left_hover_border} !important;
+          }}
+          /* Right column (Deep) button */
+          [data-testid="stHorizontalBlock"] > div:nth-child(2) .stButton > button {{
+            background: {right_bg} !important;
+            border: 1.5px solid {right_border} !important;
+            color: {right_color} !important;
+            border-radius: 10px !important;
+            font-weight: 700 !important;
+            padding: 0.65rem 1rem !important;
+          }}
+          [data-testid="stHorizontalBlock"] > div:nth-child(2) .stButton > button:hover {{
+            background: {right_hover_bg} !important;
+            border-color: {right_hover_border} !important;
+          }}
         </style>
         """,
         unsafe_allow_html=True,
     )
 
-    with st.container():
-        st.markdown('<div class="top-tabs">', unsafe_allow_html=True)
-        c1, c2 = st.columns(2)
+    c_left, c_right = st.columns(2, gap="large")
 
-        # "Tab" 1: Compare
-        with c1:
-            st.markdown(
-                '<div class="active">' if active == "Compare Surveys" else "<div>",
-                unsafe_allow_html=True,
-            )
-            if st.button("Compare Surveys", key="top_tab_compare", use_container_width=True):
-                if active != "Compare Surveys":
-                    st.session_state.top_nav = "Compare Surveys"
-                    _goto("compare")
-            st.markdown("</div>", unsafe_allow_html=True)
+    with c_left:
+        st.markdown(
+            """
+            <div class="nav-card nav-card-green">
+              <h3>Compare Surveys</h3>
+              <p>Compare survey programs across:</p>
+              <ul>
+                <li>number of workshops</li>
+                <li>response volume</li>
+                <li>PRE vs POST balance</li>
+                <li>trends over time</li>
+                <li>school coverage</li>
+              </ul>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        if st.button("Open Comparison Dashboard", key="top_tab_compare", use_container_width=True):
+            st.session_state.top_nav = "Compare Surveys"
+            _goto("compare")
 
-        # "Tab" 2: Deep
-        with c2:
-            st.markdown(
-                '<div class="active">' if active == "Deep Survey Analysis" else "<div>",
-                unsafe_allow_html=True,
-            )
-            if st.button("Deep Survey Analysis", key="top_tab_deep", use_container_width=True):
-                if active != "Deep Survey Analysis":
-                    st.session_state.top_nav = "Deep Survey Analysis"
-                    _goto("deep")
-            st.markdown("</div>", unsafe_allow_html=True)
+    with c_right:
+        st.markdown(
+            """
+            <div class="nav-card nav-card-blue">
+              <h3>Deep Survey Analysis</h3>
+              <p>Detailed statistical analysis for one survey:</p>
+              <ul>
+                <li>question-level significance</li>
+                <li>median shifts</li>
+                <li>response distributions</li>
+                <li>semantic analysis</li>
+              </ul>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        if st.button("Open Detailed Dashboard", key="top_tab_deep", use_container_width=True):
+            st.session_state.top_nav = "Deep Survey Analysis"
+            _goto("deep")
 
-        st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown('<hr class="thin">', unsafe_allow_html=True)
 
 def _card(col, value, label, bg_color="#f8f9fa"):
     col.markdown(
@@ -274,6 +323,40 @@ def render_landing(df_compare_base: pd.DataFrame):
     kpis = an.compute_compare_kpis(df_compare_base)
 
     st.markdown('<div class="portal-wrap">', unsafe_allow_html=True)
+    # Landing-page button styling (scoped to portal)
+    st.markdown(
+        """
+        <style>
+          /* Left column button — light green */
+          .portal-wrap [data-testid="stHorizontalBlock"] > div:nth-child(1) .stButton > button {
+            background: #d1fae5 !important;
+            border: 1.5px solid #6ee7b7 !important;
+            color: #065f46 !important;
+            border-radius: 10px !important;
+            font-weight: 700 !important;
+            padding: 0.65rem 1rem !important;
+          }
+          .portal-wrap [data-testid="stHorizontalBlock"] > div:nth-child(1) .stButton > button:hover {
+            background: #a7f3d0 !important;
+            border-color: #34d399 !important;
+          }
+          /* Right column button — light blue */
+          .portal-wrap [data-testid="stHorizontalBlock"] > div:nth-child(2) .stButton > button {
+            background: #dbeafe !important;
+            border: 1.5px solid #93c5fd !important;
+            color: #1e3a5f !important;
+            border-radius: 10px !important;
+            font-weight: 700 !important;
+            padding: 0.65rem 1rem !important;
+          }
+          .portal-wrap [data-testid="stHorizontalBlock"] > div:nth-child(2) .stButton > button:hover {
+            background: #bfdbfe !important;
+            border-color: #60a5fa !important;
+          }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
     st.markdown('<div class="portal-title">Survey Analytics Platform</div>', unsafe_allow_html=True)
     st.markdown(
         '<div class="portal-subtitle">Explore workshops across survey types or analyze one survey in detail</div>',
@@ -285,7 +368,7 @@ def render_landing(df_compare_base: pd.DataFrame):
     with c_left:
         st.markdown(
             """
-            <div class="nav-card">
+            <div class="nav-card nav-card-green">
               <h3>Compare Surveys</h3>
               <p>Compare survey programs across:</p>
               <ul>
@@ -306,7 +389,7 @@ def render_landing(df_compare_base: pd.DataFrame):
     with c_right:
         st.markdown(
             """
-            <div class="nav-card">
+            <div class="nav-card nav-card-blue">
               <h3>Deep Survey Analysis</h3>
               <p>Detailed statistical analysis for one survey:</p>
               <ul>
@@ -319,7 +402,7 @@ def render_landing(df_compare_base: pd.DataFrame):
             """,
             unsafe_allow_html=True,
         )
-        if st.button("Open Detailed Dashboard", type="primary", use_container_width=True):
+        if st.button("Open Detailed Dashboard", use_container_width=True):
             st.session_state.top_nav = "Deep Survey Analysis"
             _goto("deep")
 

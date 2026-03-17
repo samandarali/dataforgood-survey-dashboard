@@ -368,10 +368,6 @@ def run_wilcoxon_vs_neutral(
     if results_df.empty:
         return results_df
 
-    for col in ("W_stat", "p_value", "p_adj_BH"):
-        if col in results_df.columns:
-            results_df[col] = pd.to_numeric(results_df[col], errors="coerce")
-
     testable = results_df["p_value"].notna()
     if testable.sum() > 0:
         reject, p_adj, _, _ = multipletests(results_df.loc[testable, "p_value"], method="fdr_bh")
@@ -1315,3 +1311,295 @@ def generate_summary(
         .agg(**{name: (col, agg) for name, (col, agg) in agg_dict.items()})
         .reset_index()
     )
+
+
+
+# comparing surveys
+import plotly.express as px
+import plotly.graph_objects as go
+
+def compute_compare_kpis(df_compare: pd.DataFrame) -> dict:
+    """
+    KPIs for cross-survey comparison.
+
+    Required columns:
+      - survey_type
+      - survey_session_id (unique workshop/session)
+      - school_id
+      - response_id (unique response)
+    """
+    dfc = df_compare.copy()
+    return {
+        "total_survey_types": int(dfc["survey_type"].dropna().nunique()) if "survey_type" in dfc.columns else 0,
+        "total_workshops": int(dfc["survey_session_id"].dropna().nunique()) if "survey_session_id" in dfc.columns else 0,
+        "total_schools": int(dfc["school_id"].dropna().nunique()) if "school_id" in dfc.columns else 0,
+        "total_responses": int(dfc["response_id"].dropna().nunique()) if "response_id" in dfc.columns else len(dfc),
+    }
+
+
+def plot_sessions_by_survey_type_phase(df: pd.DataFrame) -> go.Figure:
+    """
+    Bar chart:
+    unique workshops/sessions by survey_type, split by PRE/POST.
+    """
+    tmp = (
+        df.dropna(subset=["survey_type", "survey_phase", "survey_session_id"])
+          .groupby(["survey_type", "survey_phase"])["survey_session_id"]
+          .nunique()
+          .reset_index(name="n_sessions")
+    )
+
+    if tmp.empty:
+        return go.Figure().update_layout(title="No data available")
+
+    fig = px.bar(
+        tmp,
+        x="survey_type",
+        y="n_sessions",
+        color="survey_phase",
+        barmode="group",
+        category_orders={"survey_phase": ["PRE", "POST"]},
+        title="Number of workshops by survey type and phase",
+        labels={
+            "survey_type": "Survey Type",
+            "n_sessions": "Number of workshops",
+            "survey_phase": "Survey Phase",
+        },
+    )
+
+    fig.update_layout(
+        plot_bgcolor="white",
+        paper_bgcolor="white",
+        margin=dict(l=40, r=40, t=70, b=50),
+        legend=dict(orientation="h", y=1.08, x=0.5, xanchor="center"),
+    )
+    fig.update_yaxes(showgrid=True, gridcolor="rgba(200,200,200,0.3)")
+    return fig
+
+
+def plot_sessions_by_school_phase(df: pd.DataFrame) -> go.Figure:
+    """
+    Grouped bar chart:
+    unique workshops/sessions by school_id, split by PRE/POST.
+    """
+    tmp = (
+        df.dropna(subset=["school_id", "survey_phase", "survey_session_id"])
+          .assign(school_id=lambda d: d["school_id"].astype(str))
+          .groupby(["school_id", "survey_phase"])["survey_session_id"]
+          .nunique()
+          .reset_index(name="n_sessions")
+    )
+
+    if tmp.empty:
+        return go.Figure().update_layout(title="No data available")
+
+    # Executive palette (greens)
+    color_map = {"PRE": "#9FE1CB", "POST": "#1D9E75"}
+
+    fig = px.bar(
+        tmp,
+        x="school_id",
+        y="n_sessions",
+        color="survey_phase",
+        barmode="group",
+        category_orders={"survey_phase": ["PRE", "POST"]},
+        color_discrete_map=color_map,
+        title="Number of workshops by school and phase",
+        labels={
+            "school_id": "School",
+            "n_sessions": "Number of workshops",
+            "survey_phase": "Survey Phase",
+        },
+    )
+
+    fig.update_layout(
+        plot_bgcolor="white",
+        paper_bgcolor="white",
+        margin=dict(l=40, r=40, t=70, b=60),
+        legend=dict(orientation="h", y=1.08, x=0.5, xanchor="center"),
+    )
+    fig.update_xaxes(tickangle=35)
+    fig.update_yaxes(showgrid=True, gridcolor="rgba(200,200,200,0.3)")
+    return fig
+
+
+def plot_responses_by_survey_type(df: pd.DataFrame) -> go.Figure:
+    """
+    Bar chart:
+    number of responses by survey_type.
+    """
+    tmp = (
+        df.dropna(subset=["survey_type", "response_id"])
+          .groupby("survey_type")["response_id"]
+          .nunique()
+          .reset_index(name="n_responses")
+          .sort_values("n_responses", ascending=False)
+    )
+
+    if tmp.empty:
+        return go.Figure().update_layout(title="No data available")
+
+    fig = px.bar(
+        tmp,
+        x="survey_type",
+        y="n_responses",
+        title="Number of responses by survey type",
+        labels={
+            "survey_type": "Survey Type",
+            "n_responses": "Number of responses",
+        },
+        text="n_responses",
+    )
+
+    fig.update_traces(textposition="outside")
+    fig.update_layout(
+        plot_bgcolor="white",
+        paper_bgcolor="white",
+        margin=dict(l=40, r=40, t=70, b=50),
+        showlegend=False,
+    )
+    fig.update_yaxes(showgrid=True, gridcolor="rgba(200,200,200,0.3)")
+    return fig
+
+
+def plot_sessions_over_time_phase(df: pd.DataFrame) -> go.Figure:
+    """
+    Scatter plot:
+    number of workshops over time by PRE/POST.
+    Counts unique survey_session_id per date and phase.
+    """
+    tmp = df.copy()
+    tmp["timestamp"] = pd.to_datetime(tmp["timestamp"], errors="coerce")
+    tmp["date"] = tmp["timestamp"].dt.date
+
+    agg = (
+        tmp.dropna(subset=["date", "survey_phase", "survey_session_id"])
+           .groupby(["date", "survey_phase"])["survey_session_id"]
+           .nunique()
+           .reset_index(name="n_sessions")
+           .sort_values("date")
+    )
+
+    if agg.empty:
+        return go.Figure().update_layout(title="No data available")
+
+    fig = px.scatter(
+        agg,
+        x="date",
+        y="n_sessions",
+        color="survey_phase",
+        category_orders={"survey_phase": ["PRE", "POST"]},
+        title="Number of workshops over time by phase",
+        labels={
+            "date": "Date",
+            "n_sessions": "Number of workshops",
+            "survey_phase": "Survey Phase",
+        },
+    )
+
+    fig.update_traces(marker=dict(size=9))
+    fig.update_layout(
+        plot_bgcolor="white",
+        paper_bgcolor="white",
+        margin=dict(l=40, r=40, t=70, b=50),
+        legend=dict(orientation="h", y=1.08, x=0.5, xanchor="center"),
+    )
+    fig.update_yaxes(showgrid=True, gridcolor="rgba(200,200,200,0.3)")
+    return fig
+
+
+def plot_sessions_over_time_phase_daily(df: pd.DataFrame) -> go.Figure:
+    """
+    Timeline plot (daily aggregation):
+    unique workshops/sessions per day, split by PRE/POST.
+    """
+    tmp = df.copy()
+    tmp["timestamp"] = pd.to_datetime(tmp["timestamp"], errors="coerce")
+    tmp = tmp.dropna(subset=["timestamp", "survey_phase", "survey_session_id"])
+    tmp["date"] = tmp["timestamp"].dt.floor("D")
+
+    agg = (
+        tmp.groupby(["date", "survey_phase"])["survey_session_id"]
+           .nunique()
+           .reset_index(name="n_sessions")
+           .sort_values("date")
+    )
+
+    if agg.empty:
+        return go.Figure().update_layout(title="No data available")
+
+    color_map = {"PRE": "#9FE1CB", "POST": "#1D9E75"}
+
+    fig = px.line(
+        agg,
+        x="date",
+        y="n_sessions",
+        color="survey_phase",
+        markers=True,
+        category_orders={"survey_phase": ["PRE", "POST"]},
+        color_discrete_map=color_map,
+        title="Number of workshops over time (daily) by phase",
+        labels={
+            "date": "Date",
+            "n_sessions": "Number of workshops",
+            "survey_phase": "Survey Phase",
+        },
+    )
+
+    fig.update_layout(
+        plot_bgcolor="white",
+        paper_bgcolor="white",
+        margin=dict(l=40, r=40, t=70, b=50),
+        legend=dict(orientation="h", y=1.08, x=0.5, xanchor="center"),
+    )
+    fig.update_yaxes(showgrid=True, gridcolor="rgba(200,200,200,0.3)")
+    return fig
+
+
+def plot_sessions_over_time_by_survey_type_phase(df: pd.DataFrame) -> go.Figure:
+    """
+    Scatter plot:
+    number of workshops over time by survey_type and PRE/POST.
+    """
+    tmp = df.copy()
+    tmp["timestamp"] = pd.to_datetime(tmp["timestamp"], errors="coerce")
+    tmp["date"] = tmp["timestamp"].dt.date
+
+    agg = (
+        tmp.dropna(subset=["date", "survey_type", "survey_phase", "survey_session_id"])
+           .groupby(["date", "survey_type", "survey_phase"])["survey_session_id"]
+           .nunique()
+           .reset_index(name="n_sessions")
+           .sort_values("date")
+    )
+
+    if agg.empty:
+        return go.Figure().update_layout(title="No data available")
+
+    agg["series"] = agg["survey_type"].astype(str) + " | " + agg["survey_phase"].astype(str)
+
+    fig = px.scatter(
+        agg,
+        x="date",
+        y="n_sessions",
+        color="survey_type",
+        symbol="survey_phase",
+        title="Number of workshops over time by survey type and phase",
+        labels={
+            "date": "Date",
+            "n_sessions": "Number of workshops",
+            "survey_type": "Survey Type",
+            "survey_phase": "Survey Phase",
+        },
+        hover_data=["survey_type", "survey_phase"],
+    )
+
+    fig.update_traces(marker=dict(size=8, opacity=0.85))
+    fig.update_layout(
+        plot_bgcolor="white",
+        paper_bgcolor="white",
+        margin=dict(l=40, r=40, t=70, b=50),
+        legend=dict(orientation="h", y=1.12, x=0.5, xanchor="center"),
+    )
+    fig.update_yaxes(showgrid=True, gridcolor="rgba(200,200,200,0.3)")
+    return fig

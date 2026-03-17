@@ -19,19 +19,21 @@ from data_utils import (
     run_categorical_plot,
     explore_semantic_text,
 )
-from semantic_exploration import (
-    clean_responses,
-    compute_umap,
-    cluster_responses_bertopic,
-    extract_topics_bertopic,
-    summarize_clusters_bertopic,
-    summarize_small_dataset,
-)
+
+try:
+    from semantic_exploration import (
+        clean_responses,
+        compute_umap,
+        cluster_responses_bertopic,
+        extract_topics_bertopic,
+        summarize_clusters_bertopic,
+        summarize_small_dataset,
+    )
+except (KeyError, ImportError) as e:
+    st.error(f"Error importing semantic_exploration module: {e}")
+    st.stop()
 
 
-# -----------------------------
-# Data loading
-# -----------------------------
 @st.cache_data
 def load_data() -> pd.DataFrame:
     """Load and merge survey data. Returns a dataframe with survey_type, survey_phase, concept_key, response_id, etc."""
@@ -53,9 +55,6 @@ def load_data() -> pd.DataFrame:
     return df
 
 
-# -----------------------------
-# App
-# -----------------------------
 st.set_page_config(page_title="Survey Dashboard", layout="wide")
 
 # Initialize page in session state
@@ -74,7 +73,6 @@ st.session_state.page = page
 
 df = load_data()
 
-# Ensure workshop_id exists for plotting (needed in Visualization mode)
 if "workshop_id" not in df.columns:
     df = create_survey_session_id(df)
 
@@ -91,12 +89,8 @@ if page == "Semantic Exploration":
         df_sub = explore_semantic_text(df)
         return df_sub
     
-    # Bump _version to refresh cache when we change which columns are included
     df_sub = load_semantic_data("v2")
 
-    # ---------------------------------
-    # Semantic-level filters (survey_type only)
-    # ---------------------------------
     st.sidebar.subheader("Semantic filters")
     # Prefer survey types present in the open-ended subset; fall back to full df.
     available_types = []
@@ -115,11 +109,9 @@ if page == "Semantic Exploration":
         st.sidebar.caption("Pick a specific survey type to run BERTopic per type.")
 
     df_sub_filtered = df_sub.copy()
-    # Only filter by survey_type; survey_phase is always POST in current data.
     if "survey_type" in df_sub_filtered.columns and selected_sem_survey_type != "All":
         df_sub_filtered = df_sub_filtered[df_sub_filtered["survey_type"] == selected_sem_survey_type]
     
-    # Missing responses analysis
     st.header(" Missing Responses Analysis")
     
     def calc_missing_pct(x):
@@ -130,7 +122,6 @@ if page == "Semantic Exploration":
         empty = (x.astype(str).str.strip() == "").sum()
         return (missing + empty) / len(x) * 100
     
-    # Group by concept_key + survey_type to see patterns
     group_cols = ["concept_key"]
     if "survey_type" in df_sub_filtered.columns:
         group_cols.append("survey_type")
@@ -180,7 +171,6 @@ if page == "Semantic Exploration":
     # Apply same filters for semantic analysis
     df_open = clean_responses(df_sub_filtered)
     
-    # Semantic Analysis per Concept
     st.header("Semantic Analysis by Concept")
     st.caption("Using **BERTopic** for topic modeling (minimum topic size = 10 responses per topic).")
 
@@ -205,7 +195,6 @@ if page == "Semantic Exploration":
                     f"Not enough responses for concept '{selected_concept_analysis}'. Need at least 3 responses."
                 )
             elif len(df_q) == 5:
-                # Special-case tiny datasets: treat each response as its own 'topic'
                 summary = summarize_small_dataset(df_q)
                 st.session_state[f"df_q_{selected_concept_analysis}"] = df_q
                 st.session_state[f"summary_{selected_concept_analysis}"] = summary
@@ -313,7 +302,6 @@ if page == "Semantic Exploration":
                 fig_bar.update_xaxes(tickangle=45)
                 st.plotly_chart(fig_bar, use_container_width=True)
             
-            # UMAP visualization
             if umap_embeddings is not None:
                 st.subheader("UMAP Visualization")
                 
@@ -340,7 +328,6 @@ if page == "Semantic Exploration":
                 )
                 st.plotly_chart(fig_umap, use_container_width=True)
                 
-                # Topic similarity matrix
                 if topic_model is not None:
                     st.subheader("Topic Similarity Matrix")
                     try:
@@ -351,14 +338,8 @@ if page == "Semantic Exploration":
     
     st.stop()
 
-# -----------------------------
-# Main Dashboard Page
-# -----------------------------
 st.title("Survey Dashboard")
 
-# -----------------------------
-# 1️⃣ Sample selection (top-level filter)
-# -----------------------------
 st.sidebar.header("1️⃣ Sample selection")
 
 survey_types = ["All"] + sorted(df["survey_type"].dropna().unique().tolist())
@@ -387,9 +368,6 @@ except KeyError as e:
 
 st.caption(f"Filtered rows: {len(df_filtered):,}")
 
-# -----------------------------
-# Mode: Summary table vs Visualization
-# -----------------------------
 st.sidebar.header("View mode")
 mode = st.sidebar.radio(
     "Mode",
@@ -397,9 +375,6 @@ mode = st.sidebar.radio(
     index=0,
 )
 
-# -----------------------------
-# 2️⃣ Summary table (dynamic)
-# -----------------------------
 if mode == "Summary table":
     st.sidebar.subheader("Summary options")
 
@@ -439,9 +414,6 @@ if mode == "Summary table":
             except (KeyError, ValueError) as e:
                 st.error(str(e))
 
-# -----------------------------
-# 3️⃣ Visualization (phase required, then question type)
-# -----------------------------
 else:
     st.sidebar.subheader("Visualization options")
 
@@ -477,10 +449,9 @@ else:
             if figs is not None:
                 for i, fig in enumerate(figs):
                     st.plotly_chart(fig, use_container_width=True)
-                    # Add more spacing between plots (except after the last one)
                     if i < len(figs) - 1:
                         st.markdown("<br><br>", unsafe_allow_html=True)
-                        st.markdown("---")  # Add a horizontal divider
+                        st.markdown("---")
                         st.markdown("<br>", unsafe_allow_html=True)
         except (KeyError, ValueError) as e:
             st.error(str(e))

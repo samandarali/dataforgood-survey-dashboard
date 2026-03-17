@@ -2,11 +2,10 @@
 Semantic exploration functions for analyzing open-ended text responses using BERTopic.
 """
 
-# Standard library imports
+import re
 import pandas as pd
 from functools import lru_cache
 
-# Third-party imports
 try:
     import umap
 except ImportError:
@@ -49,8 +48,6 @@ def embed_texts(text_tuple):
         return None
     return EMBEDDING_MODEL.encode(list(text_tuple), show_progress_bar=False)
 
-import re
-
 def clean_responses(df_sub):
     df_sub = df_sub.copy()
 
@@ -87,9 +84,7 @@ def compute_umap(embeddings, n_components=2, random_state=42):
     else:
         raise ImportError("Neither umap-learn nor scikit-learn is installed.")
 
-# -----------------------------
-# BERTopic-based functions
-# -----------------------------
+
 
 def cluster_responses_bertopic(
     df_open,
@@ -209,14 +204,11 @@ def cluster_responses_bertopic(
             from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
             all_stopwords = list(set(ENGLISH_STOP_WORDS).union(custom_stopwords))
         except ImportError:
-            # Fallback to just custom stopwords if sklearn stopwords not available
             all_stopwords = custom_stopwords
         
-        # Adapt vectorizer parameters based on dataset size
-        # For very small datasets, reduce min_df to avoid the "max_df < min_df" error
         if n_docs < 20:
-            effective_min_df = 1  # Allow words that appear in at least 1 document
-            effective_max_df = 0.95  # More lenient max_df for small datasets
+            effective_min_df = 1
+            effective_max_df = 0.95
         elif n_docs < 52:
             effective_min_df = 1
             effective_max_df = 0.95
@@ -229,7 +221,7 @@ def cluster_responses_bertopic(
             min_df=effective_min_df,
             max_df=effective_max_df,
             ngram_range=(1, 2),
-            token_pattern=r"(?u)\b[a-zA-Z][a-zA-Z]+\b",  # Keep only alphabetic words of length >= 2
+            token_pattern=r"(?u)\b[a-zA-Z][a-zA-Z]+\b",
         )
 
         # Initialize representation model with MMR for keyword diversity
@@ -241,7 +233,6 @@ def cluster_responses_bertopic(
                     MaximalMarginalRelevance(diversity=0.5)
                 ]
             except Exception:
-                # Fallback to single KeyBERTInspired if MMR fails
                 try:
                     representation_model = KeyBERTInspired()
                 except Exception:
@@ -276,14 +267,12 @@ def cluster_responses_bertopic(
         try:
             topic_model.set_topic_labels(topic_model.generate_topic_labels())
         except Exception:
-            # If label generation fails, continue with default labels
             pass
 
         # Add cluster assignments to dataframe
         df_open = df_open.copy()
         df_open["cluster"] = topics
 
-        # Get topic info (now with improved labels)
         topic_info = topic_model.get_topic_info()
 
         return df_open, topic_model, topic_info, embeddings
@@ -304,7 +293,6 @@ def extract_topics_bertopic(topic_model, df_open):
     """
     topics_dict = {}
     
-    # Get topic info
     topic_info = topic_model.get_topic_info()
     
     for _, row in topic_info.iterrows():
@@ -314,16 +302,13 @@ def extract_topics_bertopic(topic_model, df_open):
         if topic_id == -1:
             continue
         
-        # Get top words for this topic
         topic_words = topic_model.get_topic(topic_id)
-        # Filter out empty strings, None values, and ensure words are strings
         keywords = [
             str(word).strip() 
             for word, _ in topic_words[:10] 
             if word and str(word).strip()
         ]
         
-        # Get topic representation
         topic_representation = topic_model.get_topic(topic_id)
         
         topics_dict[topic_id] = {
@@ -363,7 +348,6 @@ def summarize_clusters_bertopic(df_open, topics_dict, topic_info, topic_model, t
     else:
         min_cluster_to_show = 5
     
-    # Create mapping from topic_id to BERTopic-generated topic name
     topic_name_map = dict(zip(topic_info["Topic"], topic_info.get("Name", topic_info["Topic"])))
     
     for cluster_id in sorted(df_open["cluster"].unique()):
@@ -380,14 +364,12 @@ def summarize_clusters_bertopic(df_open, topics_dict, topic_info, topic_model, t
         keywords = topic_data.get("keywords", [])
         topic_name = topic_name_map.get(cluster_id, f"Topic {cluster_id}")
         
-        # Filter out empty strings and None values, limit to top 6 keywords
         keywords_clean = [
             kw for kw in keywords[:6] 
             if kw and str(kw).strip()
         ]
         keywords_str = ", ".join(keywords_clean) if keywords_clean else "No keywords"
         
-        # Prefer original responses for examples (more readable than response_clean)
         examples = []
         response_col = "response" if "response" in cluster_df.columns else "response_clean"
 
@@ -494,7 +476,6 @@ def semantic_analysis_per_question_bertopic(df, min_topic_size=10):
             
             summary["concept_key"] = q
             
-            # Store topic model in results (optional, for visualization)
             results.append({
                 "summary": summary,
                 "topic_model": topic_model,
@@ -545,7 +526,6 @@ def summarize_small_dataset(df_q):
 
     df_q = df_q.copy()
 
-    # Ensure we have a clean text column to work with
     if "response_clean" in df_q.columns:
         texts = df_q["response_clean"].fillna("").astype(str)
     else:

@@ -51,7 +51,7 @@ st.markdown("""
 .fact-card .value {
     font-size: 2.1rem;
     font-weight: 700;
-    color: #1D9E75;
+    color: #3182bd;
     line-height: 1.1;
 }
 
@@ -90,10 +90,7 @@ st.markdown("""
   height: 220px;
   box-sizing: border-box;
 }
-.nav-card-green {
-  background: #ecfdf5;
-  border: 1.5px solid #6ee7b7;
-}
+
 .nav-card-blue {
   background: #eff6ff;
   border: 1.5px solid #93c5fd;
@@ -129,7 +126,7 @@ st.markdown("""
     color: #343a40;
     margin: 18px 0 8px;
     padding-bottom: 4px;
-    border-bottom: 2px solid #1D9E75;
+    border-bottom: 2px solid #3182bd;
 }
 
 /* ── expander title ── */
@@ -168,7 +165,7 @@ button[data-baseweb="tab"] {
 }
 
 button[data-baseweb="tab"][aria-selected="true"] {
-    color: #1D9E75 !important;
+    color: #3182bd !important;
 }
             
 /* ── tab titles ── */
@@ -236,46 +233,18 @@ def _render_top_nav(active: str):
     st.markdown(
         f"""
         <style>
-          /* Compare button (col 1) */
-          [data-testid="stHorizontalBlock"] > div:nth-child(1) .stButton > button {{
-            background: {compare_bg} !important;
-            border: 1.5px solid {compare_border} !important;
-            color: {compare_color} !important;
+          /* Portal buttons: consistent light-blue styling for all 3 buttons */
+          [data-testid="stHorizontalBlock"] > div .stButton > button {{
+            background: #dbeafe !important;
+            border: 1.5px solid #93c5fd !important;
+            color: #1e3a5f !important;
             border-radius: 10px !important;
             font-weight: 700 !important;
             padding: 0.65rem 1rem !important;
           }}
-          [data-testid="stHorizontalBlock"] > div:nth-child(1) .stButton > button:hover {{
-            background: {compare_hover_bg} !important;
-            border-color: {compare_hover_border} !important;
-          }}
-
-          /* Deep button (col 2) */
-          [data-testid="stHorizontalBlock"] > div:nth-child(2) .stButton > button {{
-            background: {deep_bg} !important;
-            border: 1.5px solid {deep_border} !important;
-            color: {deep_color} !important;
-            border-radius: 10px !important;
-            font-weight: 700 !important;
-            padding: 0.65rem 1rem !important;
-          }}
-          [data-testid="stHorizontalBlock"] > div:nth-child(2) .stButton > button:hover {{
-            background: {deep_hover_bg} !important;
-            border-color: {deep_hover_border} !important;
-          }}
-
-          /* Semantic button (col 3) */
-          [data-testid="stHorizontalBlock"] > div:nth-child(3) .stButton > button {{
-            background: {sem_bg} !important;
-            border: 1.5px solid {sem_border} !important;
-            color: {sem_color} !important;
-            border-radius: 10px !important;
-            font-weight: 700 !important;
-            padding: 0.65rem 1rem !important;
-          }}
-          [data-testid="stHorizontalBlock"] > div:nth-child(3) .stButton > button:hover {{
-            background: {sem_hover_bg} !important;
-            border-color: {sem_hover_border} !important;
+          [data-testid="stHorizontalBlock"] > div .stButton > button:hover {{
+            background: #bfdbfe !important;
+            border-color: #60a5fa !important;
           }}
         </style>
         """,
@@ -287,7 +256,7 @@ def _render_top_nav(active: str):
     with c1:
         st.markdown(
             """
-            <div class="nav-card nav-card-green">
+            <div class="nav-card nav-card-blue">
               <h3>Compare Surveys</h3>
               <p>Compare survey programs across:</p>
               <ul>
@@ -367,21 +336,8 @@ def render_landing(df_compare_base: pd.DataFrame):
     st.markdown(
         """
         <style>
-          /* Left column button — light green */
-          .portal-wrap [data-testid="stHorizontalBlock"] > div:nth-child(1) .stButton > button {
-            background: #d1fae5 !important;
-            border: 1.5px solid #6ee7b7 !important;
-            color: #065f46 !important;
-            border-radius: 10px !important;
-            font-weight: 700 !important;
-            padding: 0.65rem 1rem !important;
-          }
-          .portal-wrap [data-testid="stHorizontalBlock"] > div:nth-child(1) .stButton > button:hover {
-            background: #a7f3d0 !important;
-            border-color: #34d399 !important;
-          }
-          /* Right column button — light blue */
-          .portal-wrap [data-testid="stHorizontalBlock"] > div:nth-child(2) .stButton > button {
+          /* Portal buttons (all columns) — consistent light blue */
+          .portal-wrap [data-testid="stHorizontalBlock"] > div .stButton > button {
             background: #dbeafe !important;
             border: 1.5px solid #93c5fd !important;
             color: #1e3a5f !important;
@@ -389,20 +345,7 @@ def render_landing(df_compare_base: pd.DataFrame):
             font-weight: 700 !important;
             padding: 0.65rem 1rem !important;
           }
-          .portal-wrap [data-testid="stHorizontalBlock"] > div:nth-child(2) .stButton > button:hover {
-            background: #bfdbfe !important;
-            border-color: #60a5fa !important;
-          }
-          /* Semantic column button — light blue */
-          .portal-wrap [data-testid="stHorizontalBlock"] > div:nth-child(3) .stButton > button {
-            background: #dbeafe !important;
-            border: 1.5px solid #93c5fd !important;
-            color: #1e3a5f !important;
-            border-radius: 10px !important;
-            font-weight: 700 !important;
-            padding: 0.65rem 1rem !important;
-          }
-          .portal-wrap [data-testid="stHorizontalBlock"] > div:nth-child(3) .stButton > button:hover {
+          .portal-wrap [data-testid="stHorizontalBlock"] > div .stButton > button:hover {
             background: #bfdbfe !important;
             border-color: #60a5fa !important;
           }
@@ -421,7 +364,7 @@ def render_landing(df_compare_base: pd.DataFrame):
     with c_left:
         st.markdown(
             """
-            <div class="nav-card nav-card-green">
+            <div class="nav-card nav-card-blue">
               <h3>Compare Surveys</h3>
               <p>Compare survey programs across:</p>
               <ul>
@@ -598,10 +541,10 @@ def render_deep(df_all: pd.DataFrame):
     # ─────────────────────────────────────────────────────────────────────────────
     # Page title  (existing logic)
     # ─────────────────────────────────────────────────────────────────────────────
-    st.title(f"📊 Survey Analysis — {survey_label}")
+    st.title(f"Survey Analysis — {survey_label}")
     if selected_school != "All":
         st.caption(f"Filtered to school: **{selected_school}**")
-
+ 
     # ─────────────────────────────────────────────────────────────────────────────
     # Fact cards  (existing logic)
     # ─────────────────────────────────────────────────────────────────────────────
@@ -641,7 +584,7 @@ def render_deep(df_all: pd.DataFrame):
         common_cols = st.columns(len(common_items)) if common_items else []
         for col, (rtype, count) in zip(common_cols, common_items):
             short_label = f"{rtype}"
-            _card(col, count, short_label, bg_color="#fafde8")
+            _card(col, count, short_label, bg_color="#d1fae5")
 
     # RIGHT: POST-only
     with right_col:
@@ -652,7 +595,7 @@ def render_deep(df_all: pd.DataFrame):
 
         for col, (rtype, count) in zip(post_only_cols, post_only_items):
             short_label = f"{rtype}"
-            _card(col, count, short_label, bg_color="#77f1e7")
+            _card(col, count, short_label, bg_color="#d1fae5")
 
     # ─────────────────────────────────────────────────────────────────────────────
     # TABS  (existing logic)
@@ -709,19 +652,22 @@ def render_deep(df_all: pd.DataFrame):
                         ).fillna("—")
 
                         def _color_row(row):
-                            sig   = row["significant"] == "Yes"
+                            # Keep styling consistent with a single blue palette.
+                            sig = row["significant"] == "Yes"
                             shift = row["median_shift"]
-                            # zero shift (regardless of significance) → red
-                            if shift == 0:
-                                return ["background-color: #fde8e8; color: #7f1d1d"] * len(row)
-                            # not significant → orange
-                            if not sig:
-                                return ["background-color: #fff3e0; color: #7c4700"] * len(row)
-                            # positive + significant → green
-                            if shift > 0:
-                                return ["background-color: #d4f5e9; color: #0f5132"] * len(row)
-                            # negative + significant → purple
-                            return ["background-color: #ede9fe; color: #4c1d95"] * len(row)
+
+                            not_sig_bg, not_sig_color = "#f1f5f9", "#64748b"
+                            pos_bg, pos_color = "#dbeafe", "#1e3a5f"
+                            neg_bg, neg_color = "#93c5fd", "#0f172a"
+
+                            if (not sig) or shift == 0:
+                                bg, color = not_sig_bg, not_sig_color
+                            elif shift > 0:
+                                bg, color = pos_bg, pos_color
+                            else:
+                                bg, color = neg_bg, neg_color
+
+                            return [f"background-color: {bg}; color: {color}"] * len(row)
 
                         st.dataframe(
                             display_df.style
@@ -751,9 +697,8 @@ def render_deep(df_all: pd.DataFrame):
                     with col_guide:
                         st.markdown("##### How to read these charts")
                         st.markdown(
-                            "- **Left (shift):** dark colour = statistically significant (★), "
-                            "light = not significant.\n"
-                            "- Teal = positive shift (improvement); red-orange = negative shift.\n"
+                            "- **Left (shift):** darker = statistically significant (★), light = not significant.\n"
+                            "- Blue shades show direction: lighter = positive, darker = negative.\n"
                             "- **Right (medians):** circle = PRE, diamond = POST.\n"
                             "- Solid line = significant shift; dashed = not significant.\n"
                             "- Significance criterion: BH-adjusted p < 0.05."
@@ -792,16 +737,22 @@ def render_deep(df_all: pd.DataFrame):
                         ).fillna("—")
 
                         def _color_row_wlcx(row):
-                            sig    = row["significant"] == "Yes"
-                            # shift relative to neutral midpoint (3)
-                            shift  = row["median"] - 3 if "median" in row.index else 0
-                            if shift == 0:
-                                return ["background-color: #fde8e8; color: #7f1d1d"] * len(row)
-                            if not sig:
-                                return ["background-color: #fff3e0; color: #7c4700"] * len(row)
-                            if shift > 0:
-                                return ["background-color: #d4f5e9; color: #0f5132"] * len(row)
-                            return ["background-color: #ede9fe; color: #4c1d95"] * len(row)
+                            # Same blue-only palette as Mann–Whitney table.
+                            sig = row["significant"] == "Yes"
+                            shift = row["median"] - 3 if "median" in row.index else 0
+
+                            not_sig_bg, not_sig_color = "#f1f5f9", "#64748b"
+                            pos_bg, pos_color = "#dbeafe", "#1e3a5f"
+                            neg_bg, neg_color = "#93c5fd", "#0f172a"
+
+                            if (not sig) or shift == 0:
+                                bg, color = not_sig_bg, not_sig_color
+                            elif shift > 0:
+                                bg, color = pos_bg, pos_color
+                            else:
+                                bg, color = neg_bg, neg_color
+
+                            return [f"background-color: {bg}; color: {color}"] * len(row)
 
                         fmt = {c: "{:.2f}" for c in ["median", "pct_above", "W_stat", "p_value", "p_adj_BH"]
                                if c in wlcx_display.columns}
@@ -826,8 +777,8 @@ def render_deep(df_all: pd.DataFrame):
                             "- Each row is a **POST-only** question.\n"
                             "- The dot shows the **median** response; the horizontal bar "
                             "spans the **interquartile range (Q1–Q3)**.\n"
-                            "- **Teal** = significantly above neutral (BH-adjusted p < 0.05); "
-                            "**grey** = not significant.\n"
+                            "- **Blue shades** = significant direction (lighter = above, darker = below); "
+                            "**grey/neutral** = not significant.\n"
                             "- ★ and percentage label shows how many respondents scored "
                             "above the neutral midpoint (3).\n"
                             "- Dashed vertical line = neutral midpoint (3)."

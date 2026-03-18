@@ -2,9 +2,10 @@
 app.py — Survey Analytics Platform
 
 Two-level analytics application:
-  1) Landing page (portal): Compare Surveys vs Deep Survey Analysis
+  1) Landing page (portal): Compare Surveys vs Deep Survey Analysis vs Semantic Analysis
   2) Compare Surveys page: cross-survey KPIs + 3 executive plots
   3) Deep Survey Analysis page: your existing dashboard (unchanged logic)
+  4) Semantic Analysis page: Semantic Analysis of open-ended responses using BERTopic
 """
 
 import streamlit as st
@@ -209,60 +210,81 @@ def _goto(page: str):
     st.rerun()
 
 def _render_top_nav(active: str):
-    """
-    Portal cards nav — always shows both cards with their descriptions.
-    The active card's button is highlighted red; the inactive one uses its
-    original green/blue colour.
-    """
-    # Build per-column button colours based on which page is active
+    """Top portal cards (3 columns): Compare / Deep / Semantic."""
+
+    # Default (inactive) colours
+    compare_bg, compare_border, compare_color = "#d1fae5", "#6ee7b7", "#065f46"
+    compare_hover_bg, compare_hover_border = "#a7f3d0", "#34d399"
+
+    deep_bg, deep_border, deep_color = "#dbeafe", "#93c5fd", "#1e3a5f"
+    deep_hover_bg, deep_hover_border = "#bfdbfe", "#60a5fa"
+
+    sem_bg, sem_border, sem_color = deep_bg, deep_border, deep_color
+    sem_hover_bg, sem_hover_border = deep_hover_bg, deep_hover_border
+
+    # When active, highlight that card's button in red.
     if active == "Compare Surveys":
-        left_bg, left_border, left_color   = "#e53e3e", "#c53030", "#ffffff"
-        left_hover_bg, left_hover_border   = "#c53030", "#9b2c2c"
-        right_bg, right_border, right_color = "#dbeafe", "#93c5fd", "#1e3a5f"
-        right_hover_bg, right_hover_border  = "#bfdbfe", "#60a5fa"
-    else:
-        left_bg, left_border, left_color   = "#d1fae5", "#6ee7b7", "#065f46"
-        left_hover_bg, left_hover_border   = "#a7f3d0", "#34d399"
-        right_bg, right_border, right_color = "#e53e3e", "#c53030", "#ffffff"
-        right_hover_bg, right_hover_border  = "#c53030", "#9b2c2c"
+        compare_bg, compare_border, compare_color = "#e53e3e", "#c53030", "#ffffff"
+        compare_hover_bg, compare_hover_border = "#c53030", "#9b2c2c"
+    elif active == "Deep Survey Analysis":
+        deep_bg, deep_border, deep_color = "#e53e3e", "#c53030", "#ffffff"
+        deep_hover_bg, deep_hover_border = "#c53030", "#9b2c2c"
+    elif active == "Semantic Exploration":
+        sem_bg, sem_border, sem_color = "#e53e3e", "#c53030", "#ffffff"
+        sem_hover_bg, sem_hover_border = "#c53030", "#9b2c2c"
 
     st.markdown(
         f"""
         <style>
-          /* Left column (Compare) button */
+          /* Compare button (col 1) */
           [data-testid="stHorizontalBlock"] > div:nth-child(1) .stButton > button {{
-            background: {left_bg} !important;
-            border: 1.5px solid {left_border} !important;
-            color: {left_color} !important;
+            background: {compare_bg} !important;
+            border: 1.5px solid {compare_border} !important;
+            color: {compare_color} !important;
             border-radius: 10px !important;
             font-weight: 700 !important;
             padding: 0.65rem 1rem !important;
           }}
           [data-testid="stHorizontalBlock"] > div:nth-child(1) .stButton > button:hover {{
-            background: {left_hover_bg} !important;
-            border-color: {left_hover_border} !important;
+            background: {compare_hover_bg} !important;
+            border-color: {compare_hover_border} !important;
           }}
-          /* Right column (Deep) button */
+
+          /* Deep button (col 2) */
           [data-testid="stHorizontalBlock"] > div:nth-child(2) .stButton > button {{
-            background: {right_bg} !important;
-            border: 1.5px solid {right_border} !important;
-            color: {right_color} !important;
+            background: {deep_bg} !important;
+            border: 1.5px solid {deep_border} !important;
+            color: {deep_color} !important;
             border-radius: 10px !important;
             font-weight: 700 !important;
             padding: 0.65rem 1rem !important;
           }}
           [data-testid="stHorizontalBlock"] > div:nth-child(2) .stButton > button:hover {{
-            background: {right_hover_bg} !important;
-            border-color: {right_hover_border} !important;
+            background: {deep_hover_bg} !important;
+            border-color: {deep_hover_border} !important;
+          }}
+
+          /* Semantic button (col 3) */
+          [data-testid="stHorizontalBlock"] > div:nth-child(3) .stButton > button {{
+            background: {sem_bg} !important;
+            border: 1.5px solid {sem_border} !important;
+            color: {sem_color} !important;
+            border-radius: 10px !important;
+            font-weight: 700 !important;
+            padding: 0.65rem 1rem !important;
+          }}
+          [data-testid="stHorizontalBlock"] > div:nth-child(3) .stButton > button:hover {{
+            background: {sem_hover_bg} !important;
+            border-color: {sem_hover_border} !important;
           }}
         </style>
         """,
         unsafe_allow_html=True,
     )
 
-    c_left, c_right = st.columns(2, gap="large")
+    c1, c2, c3 = st.columns(3, gap="large")
 
-    with c_left:
+    with c1:
         st.markdown(
             """
             <div class="nav-card nav-card-green">
@@ -283,7 +305,7 @@ def _render_top_nav(active: str):
             st.session_state.top_nav = "Compare Surveys"
             _goto("compare")
 
-    with c_right:
+    with c2:
         st.markdown(
             """
             <div class="nav-card nav-card-blue">
@@ -303,8 +325,26 @@ def _render_top_nav(active: str):
             st.session_state.top_nav = "Deep Survey Analysis"
             _goto("deep")
 
-    st.markdown('<hr class="thin">', unsafe_allow_html=True)
+    with c3:
+        st.markdown(
+            """
+            <div class="nav-card nav-card-blue">
+              <h3>Semantic Analysis</h3>
+              <p>BERTopic clustering for open-ended responses.</p>
+              <ul>
+                <li>missing-response stats</li>
+                <li>topic summaries + keywords</li>
+                <li>UMAP + similarity matrix</li>
+              </ul>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        if st.button("Open Semantic Analysis", key="top_tab_semantic_nav", use_container_width=True):
+            st.session_state.top_nav = "Semantic Exploration"
+            _goto("semantic")
 
+    st.markdown('<hr class="thin">', unsafe_allow_html=True)
 def _card(col, value, label, bg_color="#f8f9fa"):
     col.markdown(
         f'<div class="fact-card" style="background:{bg_color};">'
@@ -353,6 +393,19 @@ def render_landing(df_compare_base: pd.DataFrame):
             background: #bfdbfe !important;
             border-color: #60a5fa !important;
           }
+          /* Semantic column button — light blue */
+          .portal-wrap [data-testid="stHorizontalBlock"] > div:nth-child(3) .stButton > button {
+            background: #dbeafe !important;
+            border: 1.5px solid #93c5fd !important;
+            color: #1e3a5f !important;
+            border-radius: 10px !important;
+            font-weight: 700 !important;
+            padding: 0.65rem 1rem !important;
+          }
+          .portal-wrap [data-testid="stHorizontalBlock"] > div:nth-child(3) .stButton > button:hover {
+            background: #bfdbfe !important;
+            border-color: #60a5fa !important;
+          }
         </style>
         """,
         unsafe_allow_html=True,
@@ -363,7 +416,7 @@ def render_landing(df_compare_base: pd.DataFrame):
         unsafe_allow_html=True,
     )
 
-    c_left, c_right = st.columns(2, gap="large")
+    c_left, c_right, c_sem = st.columns(3, gap="large")
 
     with c_left:
         st.markdown(
@@ -406,7 +459,23 @@ def render_landing(df_compare_base: pd.DataFrame):
             st.session_state.top_nav = "Deep Survey Analysis"
             _goto("deep")
 
-    st.markdown('<div class="kpi-strip">', unsafe_allow_html=True)
+    with c_sem:
+        st.markdown(
+            """
+            <div class="nav-card nav-card-blue">
+              <h3>Semantic Exploration</h3>
+              <p>Topic modelling for open-ended responses (BERTopic).</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        if st.button(
+            "Open Semantic Analysis",
+            key="top_tab_semantic_landing",
+            use_container_width=True,
+        ):
+            st.session_state.top_nav = "Semantic Exploration"
+            _goto("semantic")
     k1, k2, k3, k4 = st.columns(4)
     _card(k1, f"{kpis['total_survey_types']:,}", "Survey Types", bg_color="#f3faf6")
     _card(k2, f"{kpis['total_workshops']:,}", "Workshops", bg_color="#f3faf6")
@@ -416,10 +485,14 @@ def render_landing(df_compare_base: pd.DataFrame):
 
     st.markdown("</div>", unsafe_allow_html=True)
 
+
+    st.markdown('<hr class="thin">', unsafe_allow_html=True)
+    
+
 def render_compare(df_all: pd.DataFrame):
     _render_top_nav("Compare Surveys")
 
-    st.sidebar.title("📊 Compare Surveys")
+    st.sidebar.title( "Compare Surveys")
     st.sidebar.markdown("---")
     if st.sidebar.button("← Back to landing"):
         st.session_state.top_nav = "Deep Survey Analysis"
@@ -431,8 +504,7 @@ def render_compare(df_all: pd.DataFrame):
     df_compare = df_all.copy()
     if selected_school != "All":
         df_compare = df_compare[df_compare["school_id"].astype(str) == selected_school]
-
-    st.title("📊 Compare Surveys")
+    st.title("Compare Surveys")
     st.caption("Cross-survey comparison across all survey types (PRE vs POST).")
     if selected_school != "All":
         st.caption(f"Filtered to school: **{selected_school}**")
@@ -477,7 +549,7 @@ def render_deep(df_all: pd.DataFrame):
     # ─────────────────────────────────────────────────────────────────────────────
     # Sidebar — survey_type selector  (existing logic)
     # ─────────────────────────────────────────────────────────────────────────────
-    st.sidebar.title("📋 Survey Dashboard")
+    st.sidebar.title("Survey Dashboard")
     st.sidebar.markdown("---")
     if st.sidebar.button("← Back to landing"):
         st.session_state.top_nav = "Deep Survey Analysis"
@@ -545,7 +617,7 @@ def render_deep(df_all: pd.DataFrame):
     </style>
     """, unsafe_allow_html=True)
 
-    st.markdown('<div class="big-title">📌 Key Facts</div>', unsafe_allow_html=True)
+    st.markdown('<div class="big-title">Key Facts</div>', unsafe_allow_html=True)
 
     c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
 
@@ -563,32 +635,31 @@ def render_deep(df_all: pd.DataFrame):
 
     # LEFT: Common PRE/POST
     with left_col:
-        st.markdown("### 🔁 Common PRE/POST Questions by Response Type")
+        st.markdown("### Common PRE/POST Questions by Response Type")
 
         common_items = list(facts["common_questions_by_type"].items())
         common_cols = st.columns(len(common_items)) if common_items else []
         for col, (rtype, count) in zip(common_cols, common_items):
-            short_label = f"Common Qs ({rtype})"
+            short_label = f"{rtype}"
             _card(col, count, short_label, bg_color="#fafde8")
 
     # RIGHT: POST-only
     with right_col:
-        st.markdown("### ➕ POST-only Questions by Response Type")
+        st.markdown("### POST-only Questions by Response Type")
 
         post_only_items = list(facts["post_only_questions_by_type"].items())
         post_only_cols = st.columns(len(post_only_items)) if post_only_items else []
 
         for col, (rtype, count) in zip(post_only_cols, post_only_items):
-            short_label = f"POST-only Qs ({rtype})"
+            short_label = f"{rtype}"
             _card(col, count, short_label, bg_color="#77f1e7")
 
     # ─────────────────────────────────────────────────────────────────────────────
     # TABS  (existing logic)
     # ─────────────────────────────────────────────────────────────────────────────
-    tab1, tab2, tab3 = st.tabs([
-        "📈 Statistical Analysis (All Schools)",
-        "🔄 Cross-Session Views",
-        "💬 Open-Ended Response Analysis",
+    tab1, tab2 = st.tabs([
+        "Statistical Analysis (All Schools)",
+        "Cross-Session Views",
     ])
 
     # ══════════════════════════════════════════════════════════════════════════════
@@ -627,18 +698,18 @@ def render_deep(df_all: pd.DataFrame):
                 if not mw_results.empty:
                     # results table (collapsible)
                     st.caption("Expand below to inspect question-level statistical results.")
-                    with st.expander("📂 Click to expand results table", expanded=False):
+                    with st.expander("Click to expand results table", expanded=False):
                         display_df = mw_results[[
                             "question", "n_pre", "n_post",
                             "pre_median", "post_median", "median_shift",
                             "p_value", "p_adj_BH", "significant",
                         ]].copy()
                         display_df["significant"] = display_df["significant"].map(
-                            {True: "✅ Yes", False: "No", None: "—"}
+                            {True: "Yes", False: "No", None: "—"}
                         ).fillna("—")
 
                         def _color_row(row):
-                            sig   = row["significant"] == "✅ Yes"
+                            sig   = row["significant"] == "Yes"
                             shift = row["median_shift"]
                             # zero shift (regardless of significance) → red
                             if shift == 0:
@@ -709,7 +780,7 @@ def render_deep(df_all: pd.DataFrame):
 
                 if not wlcx_results.empty:
                     st.caption("Expand below to inspect question-level statistical results.")
-                    with st.expander("📂 Click to expand results table", expanded=False):
+                    with st.expander("Click to expand results table", expanded=False):
                         show_cols = [c for c in [
                             "question", "scale_type", "n", "median", "pct_above",
                             "W_stat", "p_value", "p_adj_BH", "significant", "note",
@@ -717,11 +788,11 @@ def render_deep(df_all: pd.DataFrame):
 
                         wlcx_display = wlcx_results[show_cols].copy()
                         wlcx_display["significant"] = wlcx_display["significant"].map(
-                            {True: "✅ Yes", False: "No", None: "—"}
+                            {True: "Yes", False: "No", None: "—"}
                         ).fillna("—")
 
                         def _color_row_wlcx(row):
-                            sig    = row["significant"] == "✅ Yes"
+                            sig    = row["significant"] == "Yes"
                             # shift relative to neutral midpoint (3)
                             shift  = row["median"] - 3 if "median" in row.index else 0
                             if shift == 0:
@@ -834,278 +905,281 @@ def render_deep(df_all: pd.DataFrame):
                     if i < len(figs) - 1:
                         st.markdown('<hr class="thin">', unsafe_allow_html=True)
 
-    # ══════════════════════════════════════════════════════════════════════════════
-    #  TAB 3 – Open-Ended / Semantic Analysis
-    # ══════════════════════════════════════════════════════════════════════════════
-    with tab3:
-        st.markdown(
-            f"Topic modelling of open-ended text responses for **{survey_label}** "
-            "using **BERTopic** (sentence embeddings + HDBSCAN clustering)."
+def render_semantic(df_all: pd.DataFrame):
+    st.title("Semantic Exploration Dashboard")
+
+    # Sidebar
+    st.sidebar.subheader("Semantic filters")
+    if st.sidebar.button("← Back to landing"):
+        st.session_state.top_nav = "Semantic Exploration"
+        _goto("landing")
+
+    @st.cache_data(show_spinner="Loading open-ended responses…")
+    def load_semantic_data() -> pd.DataFrame:
+        return explore_semantic_text(df_all)
+
+    df_sub = load_semantic_data()
+
+    # Prefer survey types present in the open-ended subset; fall back to full df.
+    available_types = []
+    if "survey_type" in df_sub.columns:
+        available_types = sorted(df_sub["survey_type"].dropna().unique().tolist())
+    if not available_types and "survey_type" in df_all.columns:
+        available_types = sorted(df_all["survey_type"].dropna().unique().tolist())
+
+    sem_survey_types = ["All"] + available_types if available_types else ["All"]
+
+    selected_sem_survey_type = st.sidebar.selectbox(
+        "Survey type (semantic)",
+        options=sem_survey_types,
+        index=0,
+    )
+    if selected_sem_survey_type == "All":
+        st.sidebar.caption("Pick a specific survey type to run BERTopic per type.")
+
+    df_sub_filtered = df_sub.copy()
+    if "survey_type" in df_sub_filtered.columns and selected_sem_survey_type != "All":
+        df_sub_filtered = df_sub_filtered[df_sub_filtered["survey_type"] == selected_sem_survey_type]
+
+    if df_sub_filtered.empty:
+        st.info("No open-ended responses found for the selected filters.")
+        st.stop()
+
+    # ── Missing Responses Analysis ──────────────────────────────────────────
+    st.header("Missing Responses Analysis")
+
+    def calc_missing_pct(x: pd.Series) -> float:
+        if len(x) == 0:
+            return 0.0
+        missing = x.isna().sum()
+        empty = (x.astype(str).str.strip() == "").sum()
+        return (missing + empty) / len(x) * 100
+
+    group_cols = ["concept_key"]
+    if "survey_type" in df_sub_filtered.columns:
+        group_cols.append("survey_type")
+
+    missing_stats = (
+        df_sub_filtered.groupby(group_cols)["response"]
+        .apply(calc_missing_pct)
+        .reset_index(name="missing_pct")
+    )
+
+    total_counts = (
+        df_sub_filtered.groupby(group_cols)["response"]
+        .count()
+        .reset_index(name="total_responses")
+    )
+
+    missing_stats = missing_stats.merge(total_counts, on=group_cols)
+    missing_stats = missing_stats.sort_values("missing_pct", ascending=False)
+
+    # Prevent Pandas Styler formatting crashes if any values are None/non-numeric.
+    missing_stats["missing_pct"] = (
+        pd.to_numeric(missing_stats["missing_pct"], errors="coerce").fillna(0.0)
+    )
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.subheader("Missing Response Percentages")
+        st.dataframe(
+            missing_stats.style.format({"missing_pct": "{:.1f}%"}),
+            use_container_width=True,
         )
 
-        # ── Isolate open-ended rows for the currently selected survey ─────────────
-        df_sub = explore_semantic_text(df)
+    with col2:
+        st.subheader("Missing Responses Chart")
+        fig_missing = px.bar(
+            missing_stats,
+            x="concept_key",
+            y="missing_pct",
+            color="survey_type" if "survey_type" in missing_stats.columns else None,
+            barmode="group",
+            title="Percentage of Missing Responses by Concept / Survey type",
+            labels={
+                "missing_pct": "Missing %",
+                "concept_key": "Concept Key",
+                "survey_type": "Survey type",
+            },
+        )
+        fig_missing.update_xaxes(tickangle=45)
+        st.plotly_chart(fig_missing, use_container_width=True)
 
-        if df_sub.empty:
-            st.info(
-                "No open-ended questions found for this survey type / version. "
-                "Open-ended questions must have a `scale_type` that is not "
-                "'Likert Scale Numeric', 'Likert Scale Text', or 'Categorical'."
-            )
-        else:
-            # ── Section 1 — Missing response overview ─────────────────────────────
-            st.markdown('<p class="section-title">① Missing Responses by Concept</p>',
-                        unsafe_allow_html=True)
+    # ── Semantic Analysis by Concept ────────────────────────────────────────
+    st.header("Semantic Analysis by Concept")
+    st.caption("Using BERTopic for topic modeling (small-dataset fallback supported).")
 
-            def _calc_missing_pct(x):
-                if len(x) == 0:
-                    return 0.0
-                missing = x.isna().sum()
-                empty   = (x.astype(str).str.strip() == "").sum()
-                return (missing + empty) / len(x) * 100
+    df_open = clean_responses(df_sub_filtered)
+    concept_options = sorted(df_open["concept_key"].dropna().unique().tolist())
 
-            missing_stats = (
-                df_sub.groupby("concept_key")["response"]
-                .apply(_calc_missing_pct)
-                .reset_index(name="missing_pct")
-            )
-            total_counts = (
-                df_sub.groupby("concept_key")["response"]
-                .count()
-                .reset_index(name="total_responses")
-            )
-            missing_stats = (
-                missing_stats.merge(total_counts, on="concept_key")
-                .sort_values("missing_pct", ascending=False)
-            )
+    if not concept_options:
+        st.warning("No concepts available for semantic analysis.")
+        st.stop()
 
-            col_tbl, col_chart = st.columns(2)
-            with col_tbl:
-                st.dataframe(
-                    missing_stats.style.format({"missing_pct": "{:.1f}%"}),
-                    use_container_width=True,
+    selected_concept_analysis = st.selectbox(
+        "Select Concept Key for Semantic Analysis",
+        options=concept_options,
+        index=0,
+        key="semantic_concept_key",
+    )
+
+    run_disabled = selected_sem_survey_type == "All"
+
+    def _safe_key(x) -> str:
+        return str(x).replace("/", "_").replace(" ", "_")
+
+    state_prefix = f"semantic_{_safe_key(selected_sem_survey_type)}_{_safe_key(selected_concept_analysis)}"
+
+    if st.button("Run Semantic Analysis", type="primary", disabled=run_disabled, key="semantic_run_button"):
+        with st.spinner("Computing embeddings and clustering responses…"):
+            df_q = df_open[df_open["concept_key"] == selected_concept_analysis].copy()
+
+            if len(df_q) < 3:
+                st.warning(
+                    f"Not enough responses for concept '{selected_concept_analysis}'. Need at least 3 responses."
                 )
-            with col_chart:
-                fig_missing = px.bar(
-                    missing_stats,
-                    x="concept_key",
-                    y="missing_pct",
-                    title="% Missing Responses by Concept",
-                    labels={"missing_pct": "Missing %", "concept_key": "Concept"},
-                )
-                fig_missing.update_xaxes(tickangle=45)
-                st.plotly_chart(fig_missing, use_container_width=True)
-
-            # ── Section 2 — Per-concept semantic analysis ─────────────────────────
-            st.markdown('<hr class="thin">', unsafe_allow_html=True)
-            st.markdown('<p class="section-title">② Semantic Analysis by Concept</p>',
-                        unsafe_allow_html=True)
-            st.caption(
-                "Minimum topic size adapts automatically to dataset size. "
-                "Results are cached in session — re-select a concept to view previous runs."
-            )
-
-            df_open = clean_responses(df_sub)
-            concept_map = (
-                df_open[["concept_key", "concept_name"]]
-                .dropna(subset=["concept_key"])
-                .drop_duplicates()
-                .set_index("concept_key")["concept_name"]
-                .to_dict()
-            )
-            concept_options = sorted(df_open["concept_key"].dropna().unique().tolist())
-            selected_concept_analysis = st.selectbox(
-                "Select Concept for Semantic Analysis",
-                options=concept_options,
-                format_func=lambda k: concept_map.get(k, k),  # shows concept_name, stores concept_key
-                index=0,
-            )
-
-            if not concept_options:
-                st.warning("All open-ended responses were empty or too short to analyse.")
+            elif len(df_q) == 5:
+                summary = summarize_small_dataset(df_q)
+                st.session_state[f"df_q_{state_prefix}"] = df_q
+                st.session_state[f"summary_{state_prefix}"] = summary
+                st.session_state[f"topic_model_{state_prefix}"] = None
+                st.session_state[f"umap_{state_prefix}"] = None
+                st.session_state[f"topics_dict_{state_prefix}"] = {}
             else:
-                selected_concept = st.selectbox(
-                    "Select Concept Key",
-                    options=concept_options,
-                    index=0,
-                    key="tab3_concept",
-                )
-
-                # Show question text immediately
                 try:
-                    q_text = (
-                        df_sub.loc[
-                            df_sub["concept_key"] == selected_concept, "question_text"
-                        ].dropna().iloc[0]
+                    df_q2, topic_model, topic_info, embeddings = cluster_responses_bertopic(df_q)
+                    topics_dict = extract_topics_bertopic(topic_model, df_q2)
+                    summary = summarize_clusters_bertopic(
+                        df_q2,
+                        topics_dict,
+                        topic_info,
+                        topic_model,
+                        total_responses=len(df_q2),
                     )
-                    st.markdown(f"**Question:** {q_text}")
-                except (IndexError, KeyError):
-                    pass
 
-                n_responses = len(df_open[df_open["concept_key"] == selected_concept])
-                st.caption(f"{n_responses} valid responses available for this concept.")
-
-                if st.button("▶ Run Semantic Analysis", type="primary", key="tab3_run"):
-                    with st.spinner("Computing embeddings and clustering responses…"):
-                        df_q = df_open[df_open["concept_key"] == selected_concept].copy()
-
-                        if len(df_q) < 3:
-                            st.warning(
-                                f"Not enough responses for **{selected_concept}** "
-                                "(minimum 3 required)."
-                            )
-                        elif len(df_q) <= 5:
-                            # Tiny dataset — skip BERTopic, use simple fallback
-                            summary = summarize_small_dataset(df_q)
-                            st.session_state[f"tab3_df_q_{selected_concept}"]      = df_q
-                            st.session_state[f"tab3_summary_{selected_concept}"]   = summary
-                            st.session_state[f"tab3_model_{selected_concept}"]     = None
-                            st.session_state[f"tab3_umap_{selected_concept}"]      = None
+                    umap_embeddings = None
+                    try:
+                        if hasattr(topic_model, "umap_model"):
+                            umap_embeddings = topic_model.umap_model.transform(embeddings)
                         else:
-                            try:
-                                df_q, topic_model, topic_info, embeddings = \
-                                    cluster_responses_bertopic(df_q)
-                                topics_dict = extract_topics_bertopic(topic_model, df_q)
-                                summary = summarize_clusters_bertopic(
-                                    df_q, topics_dict, topic_info, topic_model,
-                                    total_responses=len(df_q),
-                                )
+                            umap_embeddings = compute_umap(embeddings)
+                    except Exception:
+                        umap_embeddings = compute_umap(embeddings)
 
-                                # UMAP for scatter plot
-                                umap_embeddings = None
-                                try:
-                                    if hasattr(topic_model, "umap_model"):
-                                        umap_embeddings = topic_model.umap_model.transform(
-                                            embeddings
-                                        )
-                                    else:
-                                        umap_embeddings = compute_umap(embeddings)
-                                except Exception:
-                                    try:
-                                        umap_embeddings = compute_umap(embeddings)
-                                    except Exception:
-                                        umap_embeddings = None
+                    st.session_state[f"df_q_{state_prefix}"] = df_q2
+                    st.session_state[f"summary_{state_prefix}"] = summary
+                    st.session_state[f"topic_model_{state_prefix}"] = topic_model
+                    st.session_state[f"umap_{state_prefix}"] = umap_embeddings
+                    st.session_state[f"topics_dict_{state_prefix}"] = topics_dict
+                except Exception as e:
+                    st.error(f"Error with BERTopic: {str(e)}")
 
-                                st.session_state[f"tab3_df_q_{selected_concept}"]    = df_q
-                                st.session_state[f"tab3_summary_{selected_concept}"] = summary
-                                st.session_state[f"tab3_model_{selected_concept}"]   = topic_model
-                                st.session_state[f"tab3_umap_{selected_concept}"]    = umap_embeddings
-                            except Exception as e:
-                                st.error(f"BERTopic error: {e}")
+    # ── Display Results ────────────────────────────────────────────────────
+    summary_key = f"summary_{state_prefix}"
+    if summary_key in st.session_state:
+        df_q = st.session_state.get(f"df_q_{state_prefix}")
+        summary = st.session_state.get(f"summary_{state_prefix}")
+        topic_model = st.session_state.get(f"topic_model_{state_prefix}")
+        umap_embeddings = st.session_state.get(f"umap_{state_prefix}")
 
-                # ── Display cached results ─────────────────────────────────────────
-                key_prefix = f"tab3_df_q_{selected_concept}"
-                if key_prefix in st.session_state:
-                    df_q          = st.session_state[f"tab3_df_q_{selected_concept}"]
-                    summary        = st.session_state[f"tab3_summary_{selected_concept}"]
-                    topic_model    = st.session_state.get(f"tab3_model_{selected_concept}")
-                    umap_embeddings = st.session_state.get(f"tab3_umap_{selected_concept}")
+        # Question text
+        try:
+            question_text_example = (
+                df_sub.loc[df_sub["concept_key"] == selected_concept_analysis, "question_text"]
+                .dropna()
+                .iloc[0]
+            )
+            if question_text_example:
+                st.markdown(f"## **Question text:** {question_text_example}")
+        except Exception:
+            pass
 
-                    # ── Topic summary table ────────────────────────────────────────
-                    st.markdown("#### 📊 Topic Summary")
-                    if len(summary) == 0:
-                        st.info("No distinct topics found — all responses may be too similar "
-                                "or the dataset is too small.")
-                    else:
-                        summary_display = summary.copy()
-                        summary_display["percentage"] = summary_display["percentage"].apply(
-                            lambda x: f"{x:.1f}%"
-                        )
-                        st.dataframe(
-                            summary_display[
-                                ["cluster", "size", "percentage",
-                                 "keywords", "example_responses"]
-                            ],
-                            use_container_width=True,
-                            height=320,
-                        )
-                        st.download_button(
-                            "⬇ Download topic summary CSV",
-                            data=summary.to_csv(index=False).encode(),
-                            file_name=f"{survey_label}_{selected_concept}_topics.csv",
-                            mime="text/csv",
-                            key="tab3_dl",
-                        )
+        st.subheader("Topic Summary")
+        if summary is None or len(summary) == 0:
+            st.info("No topics found for this concept.")
+            return
 
-                        # ── Charts ────────────────────────────────────────────────
-                        col_pie, col_bar = st.columns(2)
+        summary_display = summary.copy()
+        if "percentage" in summary_display.columns:
+            summary_display["percentage"] = summary_display["percentage"].apply(lambda x: f"{x:.1f}%")
 
-                        with col_pie:
-                            st.markdown("#### 📈 Topic Distribution")
-                            fig_pie = px.pie(
-                                summary,
-                                values="percentage",
-                                names="topic_name",
-                                title=f"Topic distribution — {selected_concept}",
-                                hover_data=["size"],
-                            )
-                            fig_pie.update_traces(
-                                textposition="inside", textinfo="percent+label"
-                            )
-                            st.plotly_chart(fig_pie, use_container_width=True)
+        # Table + download
+        st.dataframe(
+            summary_display[["cluster", "size", "percentage", "keywords", "example_responses"]],
+            use_container_width=True,
+            height=320,
+        )
+        st.download_button(
+            "⬇ Download topic summary CSV",
+            data=summary.to_csv(index=False).encode(),
+            file_name=f"semantic_{_safe_key(selected_sem_survey_type)}_{_safe_key(selected_concept_analysis)}_topics.csv",
+            mime="text/csv",
+        )
 
-                        with col_bar:
-                            st.markdown("#### 📊 Topic Percentages")
-                            fig_bar = px.bar(
-                                summary.sort_values("percentage", ascending=False),
-                                x="topic_name",
-                                y="percentage",
-                                title="Percentage by topic",
-                                labels={
-                                    "percentage": "Percentage (%)",
-                                    "topic_name": "Topic",
-                                },
-                                text="percentage",
-                            )
-                            fig_bar.update_traces(
-                                texttemplate="%{text:.1f}%", textposition="outside"
-                            )
-                            fig_bar.update_xaxes(tickangle=45)
-                            st.plotly_chart(fig_bar, use_container_width=True)
+        # Visualizations
+        col1, col2 = st.columns(2)
 
-                        # ── UMAP scatter ──────────────────────────────────────────
-                        if umap_embeddings is not None:
-                            st.markdown("#### 🗺️ UMAP Response Map")
-                            st.caption(
-                                "Each dot is one response. Responses with similar meaning "
-                                "cluster together. Colour = topic. Hover to read the response."
-                            )
-                            min_len = min(len(umap_embeddings), len(df_q))
-                            topic_name_map = dict(
-                                zip(summary["cluster"], summary["topic_name"])
-                            )
-                            topic_name_map[-1] = "Noise / Unassigned"
-                            umap_df = pd.DataFrame({
-                                "x":        umap_embeddings[:min_len, 0],
-                                "y":        umap_embeddings[:min_len, 1],
-                                "cluster":  df_q["cluster"].values[:min_len],
-                                "response": df_q["response"].values[:min_len],
-                            })
-                            umap_df["topic_name"] = (
-                                umap_df["cluster"].map(topic_name_map).fillna("Unknown")
-                            )
-                            fig_umap = px.scatter(
-                                umap_df,
-                                x="x", y="y",
-                                color="topic_name",
-                                hover_data=["response"],
-                                title=f"UMAP — {selected_concept}",
-                                labels={"x": "UMAP 1", "y": "UMAP 2"},
-                            )
-                            fig_umap.update_traces(marker=dict(size=7, opacity=0.8))
-                            st.plotly_chart(fig_umap, use_container_width=True)
+        with col1:
+            st.subheader("Topic Distribution (Pie Chart)")
+            fig_pie = px.pie(
+                summary,
+                values="percentage",
+                names="topic_name",
+                title=f"Topic distribution for {selected_concept_analysis}",
+                hover_data=["size"],
+            )
+            fig_pie.update_traces(textposition="inside", textinfo="percent+label")
+            st.plotly_chart(fig_pie, use_container_width=True)
 
-                        # ── Topic similarity heatmap ──────────────────────────────
-                        if topic_model is not None:
-                            st.markdown("#### 🔢 Topic Similarity Matrix")
-                            try:
-                                fig_heat = topic_model.visualize_heatmap()
-                                st.plotly_chart(fig_heat, use_container_width=True)
-                            except Exception:
-                                st.info(
-                                    "Similarity matrix requires ≥ 2 topics — "
-                                    "not available for this concept."
-                                )
+        with col2:
+            st.subheader("Topic Percentages (Bar Chart)")
+            fig_bar = px.bar(
+                summary.sort_values("percentage", ascending=False),
+                x="topic_name",
+                y="percentage",
+                title="Percentage distribution by topic",
+                labels={"percentage": "Percentage (%)", "topic_name": "Topic"},
+                text="percentage",
+            )
+            fig_bar.update_traces(texttemplate="%{text:.1f}%", textposition="outside")
+            fig_bar.update_xaxes(tickangle=45)
+            st.plotly_chart(fig_bar, use_container_width=True)
+
+        if umap_embeddings is not None:
+            st.subheader("UMAP Visualization")
+            min_len = min(len(umap_embeddings), len(df_q))
+            umap_df = pd.DataFrame({
+                "x": umap_embeddings[:min_len, 0],
+                "y": umap_embeddings[:min_len, 1],
+                "cluster": df_q["cluster"].values[:min_len],
+                "response": df_q["response"].values[:min_len],
+            })
+
+            topic_name_map = dict(zip(summary["cluster"], summary["topic_name"]))
+            topic_name_map[-1] = "Noise"
+            umap_df["topic_name"] = umap_df["cluster"].map(topic_name_map).fillna("Unknown")
+
+            fig_umap = px.scatter(
+                umap_df,
+                x="x",
+                y="y",
+                color="topic_name",
+                hover_data=["response"],
+                title=f"UMAP visualization of responses for {selected_concept_analysis}",
+                labels={"x": "UMAP 1", "y": "UMAP 2"},
+            )
+            st.plotly_chart(fig_umap, use_container_width=True)
+
+        if topic_model is not None:
+            st.subheader("Topic Similarity Matrix")
+            try:
+                fig_similarity = topic_model.visualize_heatmap()
+                st.plotly_chart(fig_similarity, use_container_width=True)
+            except Exception:
+                st.info("Topic similarity matrix not available for this concept.")
+
+    st.stop()
 
 
 _ensure_page_state()
@@ -1117,5 +1191,7 @@ if st.session_state.page == "landing":
     render_landing(df_compare_base)
 elif st.session_state.page == "compare":
     render_compare(df_all)
+elif st.session_state.page == "semantic":
+    render_semantic(df_all)
 else:
     render_deep(df_all)

@@ -2,10 +2,18 @@
 Semantic exploration functions for analyzing open-ended text responses using BERTopic.
 """
 
+<<<<<<< HEAD
 import re
 import pandas as pd
 from functools import lru_cache
 
+=======
+# Standard library imports
+import pandas as pd
+from functools import lru_cache
+
+# Third-party imports
+>>>>>>> dashboard-statistical-enhancement
 try:
     import umap
 except ImportError:
@@ -48,6 +56,11 @@ def embed_texts(text_tuple):
         return None
     return EMBEDDING_MODEL.encode(list(text_tuple), show_progress_bar=False)
 
+<<<<<<< HEAD
+=======
+import re
+
+>>>>>>> dashboard-statistical-enhancement
 def clean_responses(df_sub):
     df_sub = df_sub.copy()
 
@@ -84,7 +97,13 @@ def compute_umap(embeddings, n_components=2, random_state=42):
     else:
         raise ImportError("Neither umap-learn nor scikit-learn is installed.")
 
+<<<<<<< HEAD
 
+=======
+# -----------------------------
+# BERTopic-based functions
+# -----------------------------
+>>>>>>> dashboard-statistical-enhancement
 
 def cluster_responses_bertopic(
     df_open,
@@ -123,13 +142,18 @@ def cluster_responses_bertopic(
             raise Exception("Embedding model not available. Please install sentence-transformers.")
         embeddings = embed_texts(tuple(documents))
 
+<<<<<<< HEAD
         # Adapt parameters based on dataset size (more granular for small sets)
         # Goal: for n_docs < 30 (and especially < 20 / < 10) allow smaller clusters.
+=======
+        # Adapt parameters based on dataset size (3-tier approach)
+>>>>>>> dashboard-statistical-enhancement
         if n_docs == 5:
             # Smallest dataset: relaxed but valid clustering (min_cluster_size must be >= 2)
             effective_min_topic_size = 2
             effective_n_neighbors = 2
             effective_n_components = 2
+<<<<<<< HEAD
         elif n_docs < 10:
             effective_min_topic_size = 2
             effective_n_neighbors = 2
@@ -152,6 +176,18 @@ def cluster_responses_bertopic(
             effective_min_topic_size = max(4, n_docs // 10)
             effective_n_neighbors = max(10, min(n_neighbors, n_docs - 1))
             effective_n_components = max(2, min(n_components, n_docs - 1))
+=======
+        elif n_docs < 52:
+            # Very small datasets: relaxed clustering
+            effective_min_topic_size = 2
+            effective_n_neighbors = max(2, n_docs // 2)
+            effective_n_components = max(2, min(n_components, n_docs - 1))
+        elif n_docs < 100:
+            # Medium datasets: moderate clustering
+            effective_min_topic_size = max(3, n_docs // 10)
+            effective_n_neighbors = max(5, min(n_neighbors, n_docs - 1))
+            effective_n_components = max(3, min(n_components, n_docs - 1))
+>>>>>>> dashboard-statistical-enhancement
         else:
             # Large datasets: normal/default clustering
             effective_min_topic_size = min_topic_size
@@ -172,6 +208,7 @@ def cluster_responses_bertopic(
             effective_min_topic_size = 2
 
         # Initialize HDBSCAN
+<<<<<<< HEAD
         # For very small datasets, relax min_samples to encourage more clusters.
         if n_docs < 20:
             effective_min_samples = 1
@@ -181,6 +218,11 @@ def cluster_responses_bertopic(
         hdbscan_model = HDBSCAN(
             min_cluster_size=effective_min_topic_size,
             min_samples=effective_min_samples,
+=======
+        hdbscan_model = HDBSCAN(
+            min_cluster_size=effective_min_topic_size,
+            min_samples = max(2, int(effective_min_topic_size * 0.75)),
+>>>>>>> dashboard-statistical-enhancement
             metric="euclidean",
             cluster_selection_method="eom",
         )
@@ -204,11 +246,22 @@ def cluster_responses_bertopic(
             from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
             all_stopwords = list(set(ENGLISH_STOP_WORDS).union(custom_stopwords))
         except ImportError:
+<<<<<<< HEAD
             all_stopwords = custom_stopwords
         
         if n_docs < 20:
             effective_min_df = 1
             effective_max_df = 0.95
+=======
+            # Fallback to just custom stopwords if sklearn stopwords not available
+            all_stopwords = custom_stopwords
+        
+        # Adapt vectorizer parameters based on dataset size
+        # For very small datasets, reduce min_df to avoid the "max_df < min_df" error
+        if n_docs < 20:
+            effective_min_df = 1  # Allow words that appear in at least 1 document
+            effective_max_df = 0.95  # More lenient max_df for small datasets
+>>>>>>> dashboard-statistical-enhancement
         elif n_docs < 52:
             effective_min_df = 1
             effective_max_df = 0.95
@@ -221,7 +274,11 @@ def cluster_responses_bertopic(
             min_df=effective_min_df,
             max_df=effective_max_df,
             ngram_range=(1, 2),
+<<<<<<< HEAD
             token_pattern=r"(?u)\b[a-zA-Z][a-zA-Z]+\b",
+=======
+            token_pattern=r"(?u)\b[a-zA-Z][a-zA-Z]+\b",  # Keep only alphabetic words of length >= 2
+>>>>>>> dashboard-statistical-enhancement
         )
 
         # Initialize representation model with MMR for keyword diversity
@@ -233,6 +290,10 @@ def cluster_responses_bertopic(
                     MaximalMarginalRelevance(diversity=0.5)
                 ]
             except Exception:
+<<<<<<< HEAD
+=======
+                # Fallback to single KeyBERTInspired if MMR fails
+>>>>>>> dashboard-statistical-enhancement
                 try:
                     representation_model = KeyBERTInspired()
                 except Exception:
@@ -255,6 +316,7 @@ def cluster_responses_bertopic(
 
         # Fit the model
         topics, probs = topic_model.fit_transform(documents)
+<<<<<<< HEAD
 
         # For small datasets, automatic topic reduction can over-merge.
         if n_docs >= 30:
@@ -262,17 +324,28 @@ def cluster_responses_bertopic(
                 topic_model.reduce_topics(documents, nr_topics="auto")
             except Exception:
                 pass
+=======
+        topic_model.reduce_topics(documents, nr_topics="auto")
+>>>>>>> dashboard-statistical-enhancement
 
         # Generate better topic labels
         try:
             topic_model.set_topic_labels(topic_model.generate_topic_labels())
         except Exception:
+<<<<<<< HEAD
+=======
+            # If label generation fails, continue with default labels
+>>>>>>> dashboard-statistical-enhancement
             pass
 
         # Add cluster assignments to dataframe
         df_open = df_open.copy()
         df_open["cluster"] = topics
 
+<<<<<<< HEAD
+=======
+        # Get topic info (now with improved labels)
+>>>>>>> dashboard-statistical-enhancement
         topic_info = topic_model.get_topic_info()
 
         return df_open, topic_model, topic_info, embeddings
@@ -293,6 +366,10 @@ def extract_topics_bertopic(topic_model, df_open):
     """
     topics_dict = {}
     
+<<<<<<< HEAD
+=======
+    # Get topic info
+>>>>>>> dashboard-statistical-enhancement
     topic_info = topic_model.get_topic_info()
     
     for _, row in topic_info.iterrows():
@@ -302,13 +379,23 @@ def extract_topics_bertopic(topic_model, df_open):
         if topic_id == -1:
             continue
         
+<<<<<<< HEAD
         topic_words = topic_model.get_topic(topic_id)
+=======
+        # Get top words for this topic
+        topic_words = topic_model.get_topic(topic_id)
+        # Filter out empty strings, None values, and ensure words are strings
+>>>>>>> dashboard-statistical-enhancement
         keywords = [
             str(word).strip() 
             for word, _ in topic_words[:10] 
             if word and str(word).strip()
         ]
         
+<<<<<<< HEAD
+=======
+        # Get topic representation
+>>>>>>> dashboard-statistical-enhancement
         topic_representation = topic_model.get_topic(topic_id)
         
         topics_dict[topic_id] = {
@@ -337,6 +424,7 @@ def summarize_clusters_bertopic(df_open, topics_dict, topic_info, topic_model, t
         total_responses = len(df_open)
     
     summaries = []
+<<<<<<< HEAD
 
     # Show smaller clusters for small datasets
     if total_responses < 10:
@@ -348,6 +436,10 @@ def summarize_clusters_bertopic(df_open, topics_dict, topic_info, topic_model, t
     else:
         min_cluster_to_show = 5
     
+=======
+    
+    # Create mapping from topic_id to BERTopic-generated topic name
+>>>>>>> dashboard-statistical-enhancement
     topic_name_map = dict(zip(topic_info["Topic"], topic_info.get("Name", topic_info["Topic"])))
     
     for cluster_id in sorted(df_open["cluster"].unique()):
@@ -356,7 +448,11 @@ def summarize_clusters_bertopic(df_open, topics_dict, topic_info, topic_model, t
         
         cluster_df = df_open[df_open["cluster"] == cluster_id]
         cluster_size = len(cluster_df)
+<<<<<<< HEAD
         if cluster_size < min_cluster_to_show:
+=======
+        if cluster_size < 5:
+>>>>>>> dashboard-statistical-enhancement
             continue
         percentage = (cluster_size / total_responses * 100) if total_responses > 0 else 0
         
@@ -364,12 +460,17 @@ def summarize_clusters_bertopic(df_open, topics_dict, topic_info, topic_model, t
         keywords = topic_data.get("keywords", [])
         topic_name = topic_name_map.get(cluster_id, f"Topic {cluster_id}")
         
+<<<<<<< HEAD
+=======
+        # Filter out empty strings and None values, limit to top 6 keywords
+>>>>>>> dashboard-statistical-enhancement
         keywords_clean = [
             kw for kw in keywords[:6] 
             if kw and str(kw).strip()
         ]
         keywords_str = ", ".join(keywords_clean) if keywords_clean else "No keywords"
         
+<<<<<<< HEAD
         examples = []
         response_col = "response" if "response" in cluster_df.columns else "response_clean"
 
@@ -407,6 +508,20 @@ def summarize_clusters_bertopic(df_open, topics_dict, topic_info, topic_model, t
                     examples = candidates.sample(min(3, len(candidates)), random_state=42).tolist()
             except Exception:
                 examples = []
+=======
+        # Get representative documents from BERTopic
+        try:
+            examples = topic_model.get_representative_docs(cluster_id)
+            if examples is None:
+                examples = []
+            else:
+                examples = examples[:3] if len(examples) > 3 else examples
+        except Exception:
+            # Fallback to sampling from cluster_df if get_representative_docs fails
+            examples = cluster_df["response_clean"].sample(
+                min(3, len(cluster_df))
+            ).tolist()
+>>>>>>> dashboard-statistical-enhancement
         
         # Filter out empty example responses and ensure all are strings
         examples_clean = [
@@ -476,6 +591,10 @@ def semantic_analysis_per_question_bertopic(df, min_topic_size=10):
             
             summary["concept_key"] = q
             
+<<<<<<< HEAD
+=======
+            # Store topic model in results (optional, for visualization)
+>>>>>>> dashboard-statistical-enhancement
             results.append({
                 "summary": summary,
                 "topic_model": topic_model,
@@ -526,6 +645,10 @@ def summarize_small_dataset(df_q):
 
     df_q = df_q.copy()
 
+<<<<<<< HEAD
+=======
+    # Ensure we have a clean text column to work with
+>>>>>>> dashboard-statistical-enhancement
     if "response_clean" in df_q.columns:
         texts = df_q["response_clean"].fillna("").astype(str)
     else:

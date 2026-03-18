@@ -182,7 +182,11 @@ if f"df_q_{selected_concept_analysis}" in st.session_state:
         st.markdown(f"**Question text:** {question_text_example}")
 
     # Summary table per concept_key
+<<<<<<< HEAD
     st.subheader("Topic Summary")
+=======
+    st.subheader("📊 Topic Summary")
+>>>>>>> dashboard-statistical-enhancement
     if len(summary) > 0:
         # Format summary for display
         summary_display = summary.copy()
@@ -207,7 +211,11 @@ if f"df_q_{selected_concept_analysis}" in st.session_state:
         col1, col2 = st.columns(2)
 
         with col1:
+<<<<<<< HEAD
             st.subheader("Topic Distribution (Pie Chart)")
+=======
+            st.subheader("📈 Topic Distribution (Pie Chart)")
+>>>>>>> dashboard-statistical-enhancement
             # Use summary data with names and percentages
             fig_pie = px.pie(
                 summary,
@@ -220,7 +228,11 @@ if f"df_q_{selected_concept_analysis}" in st.session_state:
             st.plotly_chart(fig_pie, use_container_width=True)
 
         with col2:
+<<<<<<< HEAD
             st.subheader("Topic Percentages (Bar Chart)")
+=======
+            st.subheader("📊 Topic Percentages (Bar Chart)")
+>>>>>>> dashboard-statistical-enhancement
             fig_bar = px.bar(
                 summary.sort_values("percentage", ascending=False),
                 x="topic_name",
@@ -275,3 +287,12 @@ if f"df_q_{selected_concept_analysis}" in st.session_state:
                     st.plotly_chart(fig_similarity, use_container_width=True)
                 except Exception:
                     st.info("Topic similarity matrix not available for this concept.")
+<<<<<<< HEAD
+=======
+
+
+# -----------------------------
+# Batch Analysis
+# -----------------------------
+# (Batch / cross‑concept analysis removed to keep UI focused on per‑concept exploration.)
+>>>>>>> dashboard-statistical-enhancement

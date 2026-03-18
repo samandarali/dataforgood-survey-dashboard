@@ -97,6 +97,9 @@ def cluster_responses_bertopic(
     n_neighbors: int = 15,
     n_components: int = 2,
     min_dist: float = 0.1, # min distance between points in the low-dimensional space
+    split_large_clusters: bool = True,
+    large_cluster_fraction: float = 0.35,
+    large_cluster_min_size: int = 60,
 ):
     """
     Cluster responses using BERTopic.
@@ -262,31 +265,111 @@ def cluster_responses_bertopic(
             verbose=False,
         )
 
-        # Fit the model
-        topics, probs = topic_model.fit_transform(documents)
+        def _fit_topic_model(
+            hdbscan_min_topic_size: int,
+            apply_reduce_topics: bool,
+        ):
+            # Rebuild HDBSCAN to change min_cluster_size for the refit.
+            if n_docs < 20:
+                hdbscan_min_samples_local = 1
+            else:
+                hdbscan_min_samples_local = max(
+                    2, int(hdbscan_min_topic_size * 0.75)
+                )
 
-        # For small datasets, automatic topic reduction can over-merge.
-        if n_docs >= 30:
+            hdbscan_model_local = HDBSCAN(
+                min_cluster_size=hdbscan_min_topic_size,
+                min_samples=hdbscan_min_samples_local,
+                metric="euclidean",
+                cluster_selection_method="eom",
+            )
+
+            topic_model_local = BERTopic(
+                embedding_model=EMBEDDING_MODEL,
+                umap_model=umap_model,
+                hdbscan_model=hdbscan_model_local,
+                vectorizer_model=vectorizer_model,
+                representation_model=representation_model,
+                verbose=False,
+            )
+
+            # Fit the model, reusing precomputed embeddings when possible.
             try:
-                topic_model.reduce_topics(documents, nr_topics="auto")
+                topics_local, _probs = topic_model_local.fit_transform(
+                    documents, embeddings=embeddings
+                )
+            except TypeError:
+                # Older BERTopic versions may not accept `embeddings=` kwarg.
+                topics_local, _probs = topic_model_local.fit_transform(documents)
+
+            if apply_reduce_topics and n_docs >= 30:
+                try:
+                    topic_model_local.reduce_topics(documents, nr_topics="auto")
+                except Exception:
+                    pass
+
+            # Generate better topic labels
+            try:
+                topic_model_local.set_topic_labels(
+                    topic_model_local.generate_topic_labels()
+                )
             except Exception:
                 pass
 
-        # Generate better topic labels
-        try:
-            topic_model.set_topic_labels(topic_model.generate_topic_labels())
-        except Exception:
-            # If label generation fails, continue with default labels
-            pass
+            df_out = df_open.copy()
+            df_out["cluster"] = topics_local
+            topic_info_local = topic_model_local.get_topic_info()
+            return df_out, topic_model_local, topic_info_local
 
-        # Add cluster assignments to dataframe
-        df_open = df_open.copy()
-        df_open["cluster"] = topics
+        # ── First fit ───────────────────────────────────────────────────────
+        df_first, topic_model_first, topic_info_first = _fit_topic_model(
+            hdbscan_min_topic_size=effective_min_topic_size,
+            apply_reduce_topics=True,
+        )
 
-        # Get topic info (now with improved labels)
-        topic_info = topic_model.get_topic_info()
+        # ── Optionally refit if a single topic is dominating ───────────────
+        df_out = df_first
+        topic_model_out = topic_model_first
+        topic_info_out = topic_info_first
 
-        return df_open, topic_model, topic_info, embeddings
+        if split_large_clusters and n_docs >= 40:
+            # Compute max topic share excluding noise cluster (-1).
+            vc = df_first["cluster"].value_counts()
+            vc_no_noise = vc.drop(index=-1, errors="ignore")
+            if not vc_no_noise.empty:
+                max_cluster_size = int(vc_no_noise.max())
+                max_cluster_fraction = max_cluster_size / max(1, n_docs)
+            else:
+                max_cluster_size = 0
+                max_cluster_fraction = 0.0
+
+            if (max_cluster_fraction >= large_cluster_fraction) and (
+                max_cluster_size >= large_cluster_min_size
+            ):
+                # Make clustering more granular by reducing min_cluster_size.
+                refined_min_topic_size = max(
+                    2, int(effective_min_topic_size * 0.6)
+                )
+                df_second, topic_model_second, topic_info_second = _fit_topic_model(
+                    hdbscan_min_topic_size=refined_min_topic_size,
+                    apply_reduce_topics=False,
+                )
+
+                # Choose the better fit: smaller max topic fraction.
+                vc2 = df_second["cluster"].value_counts()
+                vc2_no_noise = vc2.drop(index=-1, errors="ignore")
+                if not vc2_no_noise.empty:
+                    max_cluster_size2 = int(vc2_no_noise.max())
+                    max_cluster_fraction2 = max_cluster_size2 / max(1, n_docs)
+                else:
+                    max_cluster_fraction2 = 0.0
+
+                if max_cluster_fraction2 < max_cluster_fraction:
+                    df_out = df_second
+                    topic_model_out = topic_model_second
+                    topic_info_out = topic_info_second
+
+        return df_out, topic_model_out, topic_info_out, embeddings
 
     except Exception as e:
         raise Exception(f"Error in BERTopic clustering: {str(e)}")
@@ -367,33 +450,44 @@ def summarize_clusters_bertopic(df_open, topics_dict, topic_info, topic_model, t
     topic_name_map = dict(zip(topic_info["Topic"], topic_info.get("Name", topic_info["Topic"])))
     
     for cluster_id in sorted(df_open["cluster"].unique()):
-        if cluster_id == -1:
-            continue
-        
         cluster_df = df_open[df_open["cluster"] == cluster_id]
         cluster_size = len(cluster_df)
+        percentage = (cluster_size / total_responses * 100) if total_responses > 0 else 0
+
+        response_col = "response" if "response" in cluster_df.columns else "response_clean"
+
+        # Do not include noise (-1) in the topic summary table.
+        # Keep it available for visuals via the app-side topic_name_map.
+        if cluster_id == -1:
+            continue
+
         if cluster_size < min_cluster_to_show:
             continue
-        percentage = (cluster_size / total_responses * 100) if total_responses > 0 else 0
-        
+
         topic_data = topics_dict.get(cluster_id, {})
         keywords = topic_data.get("keywords", [])
         topic_name = topic_name_map.get(cluster_id, f"Topic {cluster_id}")
-        
+
         # Filter out empty strings and None values, limit to top 6 keywords
         keywords_clean = [
-            kw for kw in keywords[:6] 
+            kw for kw in keywords[:6]
             if kw and str(kw).strip()
         ]
-        keywords_str = ", ".join(keywords_clean) if keywords_clean else "No keywords"
-        
+        # If BERTopic cannot extract meaningful keywords, hide this cluster in the table.
+        if not keywords_clean:
+            continue
+        keywords_str = ", ".join(keywords_clean)
+
         # Prefer original responses for examples (more readable than response_clean)
         examples = []
-        response_col = "response" if "response" in cluster_df.columns else "response_clean"
 
         # First try representative docs, but filter out non-informative ones (e.g., "0", "1")
         try:
-            rep = topic_model.get_representative_docs(cluster_id) if topic_model is not None else None
+            rep = (
+                topic_model.get_representative_docs(cluster_id)
+                if topic_model is not None
+                else None
+            )
             if rep:
                 rep = rep[:3] if len(rep) > 3 else rep
                 rep_clean = []
@@ -425,15 +519,15 @@ def summarize_clusters_bertopic(df_open, topics_dict, topic_info, topic_model, t
                     examples = candidates.sample(min(3, len(candidates)), random_state=42).tolist()
             except Exception:
                 examples = []
-        
+
         # Filter out empty example responses and ensure all are strings
         examples_clean = [
             str(ex).strip()
-            for ex in examples 
+            for ex in examples
             if ex is not None and str(ex).strip()
         ]
         examples_str = " | ".join(examples_clean) if examples_clean else "No examples"
-        
+
         summaries.append({
             "cluster": cluster_id,
             "topic_name": topic_name,
